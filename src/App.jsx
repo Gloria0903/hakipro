@@ -1180,6 +1180,7 @@ export default function HakiPro() {
   const [invoices,    setInvoicesRaw] = useState(() => loadAppData()?.invoices    || INVOICES);
   const [comms,       setCommsRaw]    = useState(() => loadAppData()?.comms       || COMMS);
   const [events,      setEventsRaw]   = useState(() => loadAppData()?.events      || EVENTS);
+  const [evidence,    setEvidenceRaw]  = useState(() => loadAppData()?.evidence     || {});
 
   // Wrap setters so they auto-persist
   const persist = useCallback((key, setter) => (updater) => {
@@ -1201,6 +1202,7 @@ export default function HakiPro() {
   const setInvoices    = persist("invoices",    setInvoicesRaw);
   const setComms       = persist("comms",       setCommsRaw);
   const setEvents      = persist("events",      setEventsRaw);
+  const setEvidence    = persist("evidence",    setEvidenceRaw);
 
   // Derive TEAM dynamically from registered users
   const TEAM = useMemo(() => users.filter(u => u.active).map(u => ({
@@ -1448,13 +1450,13 @@ export default function HakiPro() {
       events={myEvents} setEvents={setEvents} cases={scope.cases}
       currentUser={currentUser} isScoped={scope.isScoped} />,
     evidence:  <EvidenceVault
-      cases={scope.cases} callAI={callAI}
+      cases={scope.cases} callAI={callAI} evidence={evidence} setEvidence={setEvidence}
       currentUser={currentUser} isScoped={scope.isScoped} />,
     clients:   <ClientsView
       clients={scope.clients.length ? scope.clients : (scope.isScoped ? [] : clients)}
       setClients={setClients} setModal={setModal} cases={scope.cases}
       currentUser={currentUser} isScoped={scope.isScoped} />,
-    team:      <TeamView team={TEAM} cases={cases} timeEntries={timeEntries} />,
+    team:      <TeamView team={TEAM} cases={cases} timeEntries={timeEntries} users={users} setUsers={persistUsers} currentUser={currentUser} />,
     comms:     <CommsView
       comms={scope.comms} setComms={setComms} cases={scope.cases}
       callAI={callAI} currentUser={currentUser} isScoped={scope.isScoped} />,
@@ -1558,7 +1560,7 @@ export default function HakiPro() {
       {modal === "newTime"    && <NewTimeModal setTimeEntries={setTimeEntries} cases={scope.cases} team={TEAM} onClose={() => { setModal(null); toast("Time entry logged.", "success"); }} />}
       {modal === "newTask"    && <NewTaskModal setTasks={setTasks} cases={scope.cases} team={TEAM} currentUser={currentUser} onClose={() => { setModal(null); toast("Task added.", "success"); }} />}
       {modal === "newInvoice" && <NewInvoiceModal setInvoices={setInvoices} clients={clients} cases={cases} onClose={() => setModal(null)} />}
-      {modal === "caseDetail" && sel && <CaseDetailModal case_={sel} onClose={() => { setModal(null); setSel(null); }} callAI={callAI} tasks={tasks} setTasks={setTasks} />}
+      {modal === "caseDetail" && sel && <CaseDetailModal case_={sel} onClose={() => { setModal(null); setSel(null); }} callAI={callAI} tasks={tasks} setTasks={setTasks} evidence={evidence} setEvidence={setEvidence} currentUser={currentUser} />}
       {modal === "profile"    && <ProfileModal currentUser={currentUser} users={users} setUsers={persistUsers} setCurrentUser={setCurrentUser} onClose={() => setModal(null)} />}
 
       {/* Global toast container */}
@@ -2059,27 +2061,33 @@ function CalendarView({ events, setEvents, cases, currentUser, isScoped }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // EVIDENCE VAULT
 // ═══════════════════════════════════════════════════════════════════════════
-function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
+function EvidenceVault({ cases, callAI, currentUser, isScoped, evidence, setEvidence }) {
   const [selCase,   setSelCase]   = useState(cases[0]?.id || "");
   const [aiResult,  setAiResult]  = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [uploads,   setUploads]   = useState({});
   const fileRef = useRef(null);
-  const uploadedEv = uploads[selCase] || [];
+  // evidence is persisted: { [caseId]: [{id,name,type,icon,date,uploaded,size,tags}] }
+  const caseEv = (evidence||{})[selCase] || [];
 
   const handleUpload = (files) => {
     if (!files||!files.length) return;
     if (!selCase) { toast("Select a case first.","warn"); return; }
     const items = Array.from(files).map(file => {
       const ext  = file.name.split(".").pop().toLowerCase();
-      const icon = ["jpg","jpeg","png","gif","webp"].includes(ext)?"🖼️":ext==="pdf"?"📄":"📋";
-      const type = ["jpg","jpeg","png","gif","webp"].includes(ext)?"Image":ext==="pdf"?"PDF":"Document";
+      const icon = ["jpg","jpeg","png","gif","webp"].includes(ext)?"🖼️":ext==="pdf"?"📄":["mp3","wav","m4a","mp4"].includes(ext)?"🎵":"📋";
+      const type = ["jpg","jpeg","png","gif","webp"].includes(ext)?"Image":ext==="pdf"?"PDF":["mp3","wav","m4a","mp4"].includes(ext)?"Audio/Video":"Document";
       return { id:Date.now()+Math.random(), name:file.name, type, icon,
                date:new Date().toLocaleDateString("en-KE",{day:"numeric",month:"short"}),
-               uploaded:currentUser.name, size:file.size, tags:[] };
+               uploaded:currentUser.name, size:file.size, tags:[], caseId:selCase };
     });
-    setUploads(u => ({ ...u, [selCase]: [...(u[selCase]||[]), ...items] }));
-    toast(items.length+" file"+(items.length>1?"s":"")+" uploaded.","success");
+    if (setEvidence) setEvidence(prev => ({ ...prev, [selCase]: [...((prev||{})[selCase]||[]), ...items] }));
+    toast(items.length+" file"+(items.length>1?"s":"")+" uploaded to case "+selCase+".","success");
+  };
+
+  const deleteEv = (evId) => {
+    if (!window.confirm("Remove this evidence item?")) return;
+    if (setEvidence) setEvidence(prev => ({ ...prev, [selCase]: ((prev||{})[selCase]||[]).filter(e=>e.id!==evId) }));
+    toast("Evidence removed.","info");
   };
 
   const allEv = [
@@ -2095,13 +2103,13 @@ function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
   const caseIdSet = useMemo(() => new Set(cases.map(c => c.id)), [cases]);
   const scopedEv  = isScoped ? allEv.filter(e => caseIdSet.has(e.caseId)) : allEv;
   const seedEv    = scopedEv.filter(e => !selCase || e.caseId === selCase);
-  // Show uploaded files first, fall back to seed items
-  const ev = uploadedEv.length > 0 ? uploadedEv : seedEv;
+  // Use persisted uploaded files; fall back to seed data if no uploads
+  const ev = caseEv.length > 0 ? caseEv : seedEv;
   const analyse = async () => {
     setAiLoading(true); setAiResult("");
     const caseObj = cases.find(c => c.id===selCase);
     const ctx = caseObj ? `Case: ${caseObj.title}. Type: ${caseObj.type}. Charge: ${caseObj.charge}.` : "";
-    const items = ev.length ? ev.map(e => `${e.name} (${e.type})`).join(", ") : "No evidence items uploaded yet";
+    const items = (caseEv.length>0?caseEv:ev).length ? (caseEv.length>0?caseEv:ev).map(e => `${e.name} (${e.type})`).join(", ") : "No evidence uploaded yet for this case";
     const r = await callAI(`${ctx} Analyse these evidence items in a Kenyan court context: ${items}. For each item assess: (1) admissibility under Evidence Act Cap. 80 (2) evidentiary weight (3) chain of custody requirements (4) any legal challenges. Then identify overall gaps in the evidence.`);
     setAiResult(r); setAiLoading(false);
   };
@@ -2125,7 +2133,7 @@ function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
             <div className="dz-icon">📸</div>
             <div style={{fontSize:13}}>Drop evidence files here or click to upload</div>
             <div className="muted" style={{marginTop:4,fontSize:11}}>Photos, PDFs, documents — AI analyses admissibility under Evidence Act</div>
-            {uploadedEv.length>0&&<div className="badge b-green" style={{marginTop:8}}>{uploadedEv.length} file{uploadedEv.length>1?"s":""} uploaded</div>}
+            {caseEv.length>0&&<div className="badge b-green" style={{marginTop:8}}>{caseEv.length} file{caseEv.length>1?"s":""} uploaded</div>}
             <input ref={fileRef} type="file" multiple style={{display:"none"}} onChange={e=>handleUpload(e.target.files)} />
           </div>
           <div className="ev-grid">
@@ -2233,49 +2241,156 @@ function ClientsView({ clients, setClients, setModal, cases, currentUser, isScop
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TEAM VIEW
+// TEAM VIEW — with Add Staff form
 // ═══════════════════════════════════════════════════════════════════════════
-function TeamView({ team, cases, timeEntries }) {
-  if (!team.length) return (
-    <div style={{textAlign:"center",padding:"60px 20px",color:"var(--muted)"}}>
-      <div style={{fontSize:40,marginBottom:12}}>◎</div>
-      <div style={{fontSize:14,marginBottom:6}}>No team members yet</div>
-      <div style={{fontSize:12}}>Add lawyers, paralegals and staff via User Management.</div>
-    </div>
-  );
-  const avgRate = team.filter(t=>t.rate>0).length ? Math.round(team.filter(t=>t.rate>0).reduce((a,t)=>a+t.rate,0)/team.filter(t=>t.rate>0).length) : 0;
+function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [formErr, setFormErr] = useState("");
+  const [f, setF] = useState({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
+  const set = (k,v) => { setF(p=>({...p,[k]:v})); setFormErr(""); };
+  const isAdmin = currentUser?.role === "admin";
+
+  const addMember = () => {
+    if (!f.name.trim() || !f.username.trim() || !f.password) return setFormErr("Name, username and password are required.");
+    if (f.password.length < 6) return setFormErr("Password must be at least 6 characters.");
+    if ((users||[]).find(u => u.username === f.username.toLowerCase())) return setFormErr("Username already exists.");
+    const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+    const av   = AV_COLORS[(users||[]).length % AV_COLORS.length];
+    const newUser = { id:Date.now(), name:f.name.trim(), username:f.username.trim().toLowerCase(),
+      passwordHash:hashPw(f.password), role:f.role, lsk:f.lsk||undefined,
+      spec:f.spec||"General Practice", rate:parseInt(f.rate)||0, init, av, active:true };
+    const updated = [...(users||[]), newUser];
+    saveUsers(updated); setUsers(updated);
+    setF({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
+    setShowAdd(false); setFormErr("");
+    toast(`${newUser.name} added to the team.`, "success");
+  };
+
+  const removeMember = (id) => {
+    if (!window.confirm("Remove this team member?")) return;
+    const updated = (users||[]).filter(u => u.id !== id);
+    saveUsers(updated); setUsers(updated);
+    toast("Team member removed.", "info");
+  };
+
+  const avgRate = team.filter(t=>t.rate>0).length
+    ? Math.round(team.filter(t=>t.rate>0).reduce((a,t)=>a+t.rate,0)/team.filter(t=>t.rate>0).length) : 0;
+
   return (
     <div>
-      <div className="stats-row cols-3">
-        <StatCard icon="◎" color="c-gold" label="Advocates & Staff" val={team.length} sub="All active" />
-        <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={avgRate>0?"KES "+avgRate.toLocaleString():"—"} sub="Per hour" />
-        <StatCard icon="⏱" color="c-blue" label="Billable Hours" val={timeEntries.reduce((a, t) => a + t.hrs, 0).toFixed(1) + "h"} sub="This month" />
+      <div className="flex fac fjb mb16">
+        <div>
+          <div className="section-hd" style={{marginBottom:2}}>Advocates & Staff</div>
+          <div className="muted" style={{fontSize:11}}>{team.length} registered · {team.filter(m=>m.role==="lawyer"||m.role==="paralegal").length} legal staff</div>
+        </div>
+        {isAdmin && (
+          <button className="btn btn-gold btn-sm" onClick={()=>{setShowAdd(s=>!s);setFormErr("");}}>
+            {showAdd ? "✕ Cancel" : "+ Add Member"}
+          </button>
+        )}
       </div>
-      <div className="grid-team">
-        {team.map(m => {
-          const active = cases.filter(c => c.advocate === m.name && c.status === "Active").length;
-          const hrs = timeEntries.filter(t => t.advocate === m.name).reduce((a, t) => a + t.hrs, 0);
-          return (
-            <div key={m.id} className="card">
-              <div style={{ padding: "16px 14px 12px", textAlign: "center", borderBottom: "1px solid var(--border)" }}>
-                <div className={`av ${m.av}`} style={{ width: 46, height: 46, fontSize: 16, margin: "0 auto 10px" }}>{m.init}</div>
-                <div className="light" style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div>
-                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{m.role}</div>
-                <div style={{fontSize:11,color:"var(--teal)",marginTop:3}}>{m.spec||"General Practice"}</div>
-                {m.lsk&&m.lsk!=="—"&&<span className="lsk-badge mt8">{m.lsk}</span>}
-              </div>
-              <div style={{ padding: "10px 14px" }}>
-                {[["Rate", m.rate > 0 ? `KES ${m.rate.toLocaleString()}/hr` : "—"], ["Active Matters", active], ["Hours (Mo)", hrs.toFixed(1) + "h"]].map(([l, v]) => (
-                  <div key={l} className="flex fac fjb" style={{ marginBottom: 7 }}>
-                    <span className="muted" style={{ fontSize: 11 }}>{l}</span>
-                    <span className="light" style={{ fontSize: 12.5, fontFamily: "'Cormorant Garamond',serif" }}>{v}</span>
-                  </div>
-                ))}
+
+      {showAdd && isAdmin && (
+        <div className="card mb16">
+          <div className="card-hd"><span className="card-title">Add Team Member</span></div>
+          <div className="card-body">
+            {formErr && <div className="auth-error mb12">⚠ {formErr}</div>}
+            <div className="form-row">
+              <div className="form-group"><label>Full Name *</label><input placeholder="e.g. Jane Otieno" value={f.name} onChange={e=>set("name",e.target.value)} autoFocus /></div>
+              <div className="form-group"><label>Username *</label><input placeholder="e.g. jane.otieno" value={f.username} onChange={e=>set("username",e.target.value)} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Password * (min 6)</label><input type="password" placeholder="Temporary password" value={f.password} onChange={e=>set("password",e.target.value)} /></div>
+              <div className="form-group">
+                <label>Role *</label>
+                <select value={f.role} onChange={e=>set("role",e.target.value)}>
+                  <option value="lawyer">Advocate / Lawyer</option>
+                  <option value="paralegal">Paralegal</option>
+                  <option value="admin">Administrator</option>
+                </select>
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Specialization</label>
+                <select value={f.spec} onChange={e=>set("spec",e.target.value)}>
+                  {LEGAL_SPECIALIZATIONS.map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-group"><label>Hourly Rate (KES)</label><input type="number" placeholder="e.g. 15000" value={f.rate} onChange={e=>set("rate",e.target.value)} /></div>
+            </div>
+            {f.role==="lawyer" && (
+              <div className="form-group" style={{maxWidth:280}}><label>LSK Number</label><input placeholder="LSK/YYYY/XXXX" value={f.lsk} onChange={e=>set("lsk",e.target.value)} /></div>
+            )}
+            <div className="flex gap8" style={{justifyContent:"flex-end"}}>
+              <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setFormErr("");}}>Cancel</button>
+              <button className="btn btn-gold" onClick={addMember}>Add to Team</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!team.length && !showAdd && (
+        <div style={{textAlign:"center",padding:"40px 20px",color:"var(--muted)",background:"var(--card)",borderRadius:"var(--r10)",border:"1px solid var(--border)"}}>
+          <div style={{fontSize:40,marginBottom:12}}>◎</div>
+          <div style={{fontSize:14,marginBottom:6}}>No team members yet</div>
+          <div style={{fontSize:12}}>{isAdmin ? "Click + Add Member above to get started." : "No team members have been added yet."}</div>
+        </div>
+      )}
+
+      {team.length > 0 && (
+        <>
+          <div className="stats-row cols-3">
+            <StatCard icon="◎" color="c-gold" label="Total Staff" val={team.length} sub={`${team.filter(m=>m.role==="lawyer").length} advocates · ${team.filter(m=>m.role==="paralegal").length} paralegals`} />
+            <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={avgRate>0?"KES "+avgRate.toLocaleString():"—"} sub="Per hour" />
+            <StatCard icon="⏱" color="c-blue" label="Billable Hours" val={timeEntries.reduce((a,t)=>a+t.hrs,0).toFixed(1)+"h"} sub="All time" />
+          </div>
+
+          {["lawyer","paralegal","admin"].map(role => {
+            const group = team.filter(m => m.role===role);
+            if (!group.length) return null;
+            const label = role==="lawyer"?"Advocates":role==="paralegal"?"Paralegals":"Administrators";
+            return (
+              <div key={role} className="mb16">
+                <div className="flex fac gap8 mb10">
+                  <span className={`badge ${ROLE_COLORS[role]||"b-gray"}`}>{label}</span>
+                  <span className="muted" style={{fontSize:11}}>{group.length} member{group.length!==1?"s":""}</span>
+                </div>
+                <div className="grid-team">
+                  {group.map(m => {
+                    const active = cases.filter(c => c.advocate===m.name && c.status==="Active").length;
+                    const hrs    = timeEntries.filter(t => t.advocate===m.name).reduce((a,t)=>a+t.hrs,0);
+                    return (
+                      <div key={m.id} className="card">
+                        <div style={{padding:"16px 14px 12px",textAlign:"center",borderBottom:"1px solid var(--border)",position:"relative"}}>
+                          {isAdmin && m.id !== currentUser?.id && (
+                            <button onClick={()=>removeMember(m.id)}
+                              style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:14,padding:2}}
+                              title="Remove">✕</button>
+                          )}
+                          <div className={`av ${m.av}`} style={{width:46,height:46,fontSize:16,margin:"0 auto 10px"}}>{m.init}</div>
+                          <div className="light" style={{fontSize:13.5,fontWeight:600}}>{m.name}</div>
+                          <div className="muted" style={{fontSize:11,marginTop:2}}>{ROLE_LABELS[m.role]||m.role}</div>
+                          <div style={{fontSize:11,color:"var(--teal)",marginTop:3}}>{m.spec||"General Practice"}</div>
+                          {m.lsk&&m.lsk!=="—"&&<span className="lsk-badge mt8">{m.lsk}</span>}
+                        </div>
+                        <div style={{padding:"10px 14px"}}>
+                          {[["Rate",m.rate>0?`KES ${m.rate.toLocaleString()}/hr`:"—"],["Active Cases",active],["Hours Logged",hrs.toFixed(1)+"h"]].map(([l,v])=>(
+                            <div key={l} className="flex fac fjb" style={{marginBottom:7}}>
+                              <span className="muted" style={{fontSize:11}}>{l}</span>
+                              <span className="light" style={{fontSize:12.5,fontFamily:"'Cormorant Garamond',serif"}}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -2855,7 +2970,22 @@ function ConflictChecker({ clients, cases, callAI }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CASE DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════════════════
-function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks }) {
+function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks, evidence, setEvidence, currentUser }) {
+  const caseEv = (evidence||{})[c.id] || [];
+  const detailFileRef = useRef(null);
+  const handleDetailUpload = (files) => {
+    if (!files||!files.length) return;
+    const items = Array.from(files).map(file => {
+      const ext  = file.name.split(".").pop().toLowerCase();
+      const icon = ["jpg","jpeg","png","gif","webp"].includes(ext)?"🖼️":ext==="pdf"?"📄":"📋";
+      const type = ["jpg","jpeg","png","gif","webp"].includes(ext)?"Image":ext==="pdf"?"PDF":"Document";
+      return { id:Date.now()+Math.random(), name:file.name, type, icon,
+               date:new Date().toLocaleDateString("en-KE",{day:"numeric",month:"short"}),
+               uploaded:currentUser?.name||"Unknown", size:file.size, tags:[], caseId:c.id };
+    });
+    if (setEvidence) setEvidence(prev => ({ ...prev, [c.id]: [...((prev||{})[c.id]||[]), ...items] }));
+    toast(items.length+" file"+(items.length>1?"s":"")+" added to case.","success");
+  };
   const [tab, setTab] = useState("overview");
   const [aiResult, setAiResult] = useState(""); const [aiLoading, setAiLoading] = useState(false);
   const caseTasks = tasks.filter(t => t.caseId === c.id);
@@ -2943,15 +3073,36 @@ function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks }) {
           )}
           {tab === "evidence" && (
             <div>
-              <div className="ai-glow mb12">
-                <div className="ai-hd">🔍 Investigator Upload Link</div>
-                <div className="link-box">https://hakipro.co.ke/evidence/{c.id}/upload</div>
-                <button className="btn btn-ghost btn-sm mt8" onClick={() => navigator.clipboard?.writeText(`https://hakipro.co.ke/evidence/${c.id}/upload`)}>📋 Copy Secure Link</button>
+              <div className="flex fac fjb mb12">
+                <div><span className="light" style={{fontSize:13,fontWeight:500}}>Evidence for {c.id}</span><span className="muted" style={{fontSize:11,marginLeft:8}}>{caseEv.length} item{caseEv.length!==1?"s":""} uploaded</span></div>
+                <button className="btn btn-gold btn-sm" onClick={()=>detailFileRef.current?.click()}>+ Upload Evidence</button>
               </div>
-              <div className="drop-zone mb12"><div className="dz-icon">📸</div><div>Drop evidence files here</div><div className="muted" style={{ fontSize: 11, marginTop: 3 }}>AI analyses admissibility under Evidence Act Cap. 80</div></div>
+              <input ref={detailFileRef} type="file" multiple style={{display:"none"}} onChange={e=>handleDetailUpload(e.target.files)} accept="image/*,.pdf,.doc,.docx,.mp3,.wav,.mp4,.txt" />
+              <div className="drop-zone mb12"
+                onDragOver={e=>e.preventDefault()}
+                onDrop={e=>{e.preventDefault();handleDetailUpload(e.dataTransfer.files);}}
+                onClick={()=>detailFileRef.current?.click()}
+                style={{cursor:"pointer"}}>
+                <div className="dz-icon">📸</div>
+                <div style={{fontSize:13}}>Drop evidence files here or click to upload</div>
+                <div className="muted" style={{fontSize:11,marginTop:3}}>Photos, PDFs, recordings, documents — linked to this case</div>
+              </div>
+              {!caseEv.length && (
+                <div className="muted" style={{textAlign:"center",padding:"30px 0",fontSize:12}}>No evidence uploaded for this case yet.</div>
+              )}
               <div className="ev-grid">
-                {[{ n: "CCTV Frame 01", i: "🖼️", t: "Image" }, { n: "Bank Statements", i: "📄", t: "PDF" }, { n: "Accused Photo", i: "🖼️", t: "Image" }, { n: "Email Thread", i: "📧", t: "Doc" }, { n: "Title Deed", i: "📄", t: "PDF" }].map((e, i) => (
-                  <div key={i} className="ev-card"><div className="ev-thumb">{e.i}</div><div className="ev-label"><div className="ev-name">{e.n}</div><div className="ev-meta">{e.t}</div></div></div>
+                {caseEv.map(e => (
+                  <div key={e.id} className="ev-card" style={{position:"relative"}}>
+                    <button onClick={()=>{if(setEvidence&&window.confirm("Remove?"))setEvidence(prev=>({...prev,[c.id]:((prev||{})[c.id]||[]).filter(x=>x.id!==e.id)}));toast("Removed.","info");}}
+                      style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,.5)",border:"none",color:"#fff",borderRadius:"50%",width:18,height:18,fontSize:10,cursor:"pointer",zIndex:1}}>✕</button>
+                    <div className="ev-thumb">{e.icon}</div>
+                    <div className="ev-label">
+                      <div className="ev-name">{e.name}</div>
+                      <div className="ev-meta">{e.type} · {e.date}</div>
+                      <div className="ev-meta" style={{color:"var(--blue2)"}}>{e.uploaded}</div>
+                      {e.size&&<div className="ev-meta">{(e.size/1024).toFixed(1)}KB</div>}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
