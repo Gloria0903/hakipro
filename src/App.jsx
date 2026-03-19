@@ -507,6 +507,7 @@ const ROLE_ACCESS = {
   admin:    ["dashboard","pipeline","cases","tasks","calendar","evidence","clients","team","comms","billing","invoices","ai","reports","templates","conflict","users"],
   lawyer:   ["dashboard","pipeline","cases","tasks","calendar","evidence","clients","comms","billing","invoices","ai","templates","conflict"],
   paralegal:["tasks","calendar","evidence","comms","templates"],
+  client:["dashboard"],
 };
 
 const ROLE_LABELS = { admin:"Administrator", lawyer:"Advocate / Lawyer", paralegal:"Paralegal", client:"Client" };
@@ -1050,6 +1051,18 @@ function ProfileModal({ currentUser, users, setUsers, setCurrentUser, onClose })
 
 // ── New Invoice Modal ─────────────────────────────────────────────────────────
 function NewInvoiceModal({ setInvoices, clients, cases, onClose }) {
+  if (!clients.length) return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{width:400}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-hd"><div className="modal-title">Create Invoice</div><button className="close-x" onClick={onClose}>✕</button></div>
+        <div className="modal-body" style={{textAlign:"center",padding:40}}>
+          <div style={{fontSize:36,marginBottom:12}}>◧</div>
+          <div style={{marginBottom:8}}>Register a client first before creating an invoice.</div>
+          <button className="btn btn-gold" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
   const [clientName, setClientName] = useState(clients[0]?.name || "");
   const [caseId, setCaseId]         = useState(cases[0]?.id || "");
   const [lines, setLines] = useState([{ desc:"", hrs:1, rate:15000, amt:15000 }]);
@@ -1560,7 +1573,7 @@ export default function HakiPro() {
       {modal === "newTime"    && <NewTimeModal setTimeEntries={setTimeEntries} cases={scope.cases} team={TEAM} onClose={() => { setModal(null); toast("Time entry logged.", "success"); }} />}
       {modal === "newTask"    && <NewTaskModal setTasks={setTasks} cases={scope.cases} team={TEAM} currentUser={currentUser} onClose={() => { setModal(null); toast("Task added.", "success"); }} />}
       {modal === "newInvoice" && <NewInvoiceModal setInvoices={setInvoices} clients={clients} cases={cases} onClose={() => setModal(null)} />}
-      {modal === "caseDetail" && sel && <CaseDetailModal case_={sel} onClose={() => { setModal(null); setSel(null); }} callAI={callAI} tasks={tasks} setTasks={setTasks} evidence={evidence} setEvidence={setEvidence} currentUser={currentUser} />}
+      {modal === "caseDetail" && sel && <CaseDetailModal case_={sel} onClose={() => { setModal(null); setSel(null); }} callAI={callAI} tasks={tasks} setTasks={setTasks} evidence={evidence} setEvidence={setEvidence} currentUser={currentUser} setCases={setCases} />}
       {modal === "profile"    && <ProfileModal currentUser={currentUser} users={users} setUsers={persistUsers} setCurrentUser={setCurrentUser} onClose={() => setModal(null)} />}
 
       {/* Global toast container */}
@@ -1651,7 +1664,7 @@ function Dashboard({ cases, tasks, invoices, comms, clients, currentUser, isScop
                 <PBadge p={t.priority} />
               </div>
             ))}
-            {tasks.filter(t => !t.done && t.priority === "High").length === 0 && <div className="muted" style={{ textAlign: "center", padding: 20 }}>No urgent tasks. 🎉</div>}
+            {tasks.filter(t=>!t.done&&t.priority==="High").length===0&&<div className="muted" style={{textAlign:"center",padding:20}}>No urgent tasks 🎉</div>}
           </div>
         </div>
       </div>
@@ -1783,11 +1796,16 @@ function Pipeline({ cases, setSel, setModal, currentUser, isScoped }) {
     { id: "Judgment", label: "Judgment / Ruling", color: "var(--teal)" },
     { id: "Closed", label: "Closed", color: "var(--muted)" },
   ];
-  const stageMap = {};  // stage from case.stage
+  const stageMap = {};
   return (
     <div>
-      <div className="muted mb16" style={{ fontSize: 12 }}>Full matter lifecycle — from first instruction to final judgment or settlement.</div>
+      <div className="muted mb16" style={{fontSize:12}}>Full matter lifecycle — from first instruction to final judgment or settlement.</div>
       <ScopeBanner currentUser={currentUser} count={cases.length} noun="matter" />
+      {!cases.length&&<div style={{textAlign:"center",padding:"60px 20px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:"var(--r10)",color:"var(--muted)"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⬡</div>
+        <div style={{fontSize:14,marginBottom:6}}>No matters in pipeline yet</div>
+        <div style={{fontSize:12}}>Open a new matter from the Cases view.</div>
+      </div>}
       <div className="kanban">
         {stages.map(s => {
           const sc = cases.filter(c => (stageMap[c.id] || c.stage) === s.id);
@@ -1853,7 +1871,14 @@ function CasesView({ cases, setCases, setModal, setSel, clients, currentUser, is
                   <td><SBadge s={c.status} /></td>
                   <td><PBadge p={c.priority} /></td>
                   <td className="mono muted" style={{ fontSize: 11 }}>{c.hearing}</td>
-                  <td onClick={e => e.stopPropagation()}><button className="btn btn-ghost btn-xs" onClick={() => { setSel(c); setModal("caseDetail"); }}>Open</button></td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    <div className="flex gap4">
+                      <button className="btn btn-ghost btn-xs" onClick={()=>{setSel(c);setModal("caseDetail");}}>Open</button>
+                      {currentUser?.role==="admin"&&<select className="btn btn-ghost btn-xs" style={{padding:"2px 4px",fontSize:10}} value={c.status} onChange={e=>{e.stopPropagation();setCases(cs=>cs.map(x=>x.id===c.id?{...x,status:e.target.value}:x));}}>
+                        {["Pending","Active","Closed"].map(s=><option key={s}>{s}</option>)}
+                      </select>}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!filtered.length && <tr><td colSpan={9} style={{ textAlign: "center", padding: 30, color: "var(--muted)" }}>No matters found.</td></tr>}
@@ -1901,7 +1926,7 @@ function TasksView({ tasks, setTasks, cases, currentUser, isScoped }) {
                     <div className="task-cb" onClick={() => toggle(t.id)}>□</div>
                     <div style={{ flex: 1 }}>
                       <div className="light" style={{ fontSize: 12.5, fontWeight: 500 }}>{t.title}</div>
-                      <div className="muted" style={{ fontSize: 10, marginTop: 2 }}><span className="mono">{t.caseId}</span> · {t.due} · {t.assignee.split(" ")[0]}</div>
+                      <div className="muted" style={{fontSize:10,marginTop:2}}><span className="mono">{t.caseId}</span>{t.due?` · Due ${t.due}`:""} · {t.assignee?.split(" ")[0]||""}</div>
                     </div>
                     <PBadge p={t.priority} />
                   </div>
@@ -2197,29 +2222,40 @@ function ClientsView({ clients, setClients, setModal, cases, currentUser, isScop
         <StatCard icon="KES" color="c-blue" label="Total Retainers" val={"K " + Math.round(clients.reduce((a, c) => a + c.retainer, 0) / 1000) + "k"} sub="On account" />
       </div>
       <div className="flex fac gap10 mb16">
-        <input style={{ flex: 1, maxWidth: 300 }} placeholder="🔍  Search clients…" value={search} onChange={e => setSearch(e.target.value)} />
+        <input style={{flex:1,maxWidth:300}} placeholder="🔍  Search clients…" value={search} onChange={e=>setSearch(e.target.value)} />
       </div>
-      <div className="card">
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr><th>Client</th><th>Type</th><th>ID / Reg. No.</th><th>County</th><th>Advocate</th><th>Case Ref</th><th>Retainer (KES)</th><th>Status</th></tr></thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id}>
-                  <td><div className="flex fac gap8"><div className="av av-gold" style={{ width: 26, height: 26, fontSize: 11 }}>{c.name[0]}</div><span className="light" style={{ fontSize: 12.5 }}>{c.name}</span></div></td>
-                  <td><span className="tag">{c.type}</span></td>
-                  <td className="mono muted" style={{ fontSize: 11 }}>{c.id_no}</td>
-                  <td style={{ fontSize: 12 }}>{c.county}</td>
-                  <td style={{ fontSize: 12 }}>{c.attorney}</td>
-                  <td><span className="mono gold" style={{ fontSize: 11 }}>{c.caseRef}</span></td>
-                  <td className="mono light" style={{ fontSize: 12 }}>{c.retainer.toLocaleString()}</td>
-                  <td><SBadge s={c.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!clients.length && (
+        <div style={{textAlign:"center",padding:"60px 20px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:"var(--r10)",color:"var(--muted)"}}>
+          <div style={{fontSize:40,marginBottom:12}}>◉</div>
+          <div style={{fontSize:14,marginBottom:6}}>No clients yet</div>
+          <div style={{fontSize:12}}>Click <strong>+ Client</strong> in the top bar to register your first client.</div>
         </div>
-      </div>
+      )}
+      {clients.length > 0 && (
+        <div className="card">
+          <div className="tbl-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Type</th><th>ID / Reg. No.</th><th>County</th><th>Advocate</th><th>Case Ref</th><th>Retainer (KES)</th><th>Billed (KES)</th><th>Status</th></tr></thead>
+              <tbody>
+                {filtered.map(c=>(
+                  <tr key={c.id}>
+                    <td><div className="flex fac gap8"><div className="av av-gold" style={{width:26,height:26,fontSize:11}}>{c.name[0]}</div><span className="light" style={{fontSize:12.5}}>{c.name}</span></div></td>
+                    <td><span className="tag">{c.type}</span></td>
+                    <td className="mono muted" style={{fontSize:11}}>{c.id_no||"—"}</td>
+                    <td style={{fontSize:12}}>{c.county}</td>
+                    <td style={{fontSize:12}}>{c.attorney||"—"}</td>
+                    <td><span className="mono gold" style={{fontSize:11}}>{c.caseRef||"—"}</span></td>
+                    <td className="mono light" style={{fontSize:12}}>KES {(c.retainer||0).toLocaleString()}</td>
+                    <td className="mono" style={{fontSize:12,color:"var(--green)"}}>KES {(c.billed||0).toLocaleString()}</td>
+                    <td><SBadge s={c.status}/></td>
+                  </tr>
+                ))}
+                {!filtered.length && <tr><td colSpan={9} style={{textAlign:"center",padding:20,color:"var(--muted)"}}>No clients match your search.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       <div className="card mt16">
         <div className="card-hd"><span className="card-title">Client Onboarding Journey</span></div>
         <div className="card-body" style={{ overflowX: "auto" }}>
@@ -2544,11 +2580,30 @@ function CommsView({ comms, setComms, cases, callAI, currentUser, isScoped }) {
   const [aiDraft, setAiDraft] = useState(""); const [draftLoading, setDraftLoading] = useState(false); const [draftPrompt, setDraftPrompt] = useState("");
   const markRead = id => setComms(cs => cs.map(c => c.id === id ? { ...c, read: true } : c));
   const unreadCount = comms.filter(c => !c.read).length;
+  const [composeTo,  setComposeTo]  = useState("");
+  const [composeSubj,setComposeSubj]= useState("");
+  const [composeCase,setComposeCase]= useState(cases[0]?.id||"");
   const draft = async () => {
     if (!draftPrompt.trim()) return;
     setDraftLoading(true); setAiDraft("");
     const r = await callAI(`Draft a professional legal correspondence for a Kenyan law firm: ${draftPrompt}. Format as a formal letter/email following Kenyan professional standards.`);
     setAiDraft(r); setDraftLoading(false);
+  };
+  const sendMsg = () => {
+    if (!aiDraft.trim() && !draftPrompt.trim()) return;
+    const msg = {
+      id: Date.now(), from: currentUser.name,
+      to: composeTo || "Client",
+      caseId: composeCase || "",
+      date: new Date().toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"})+", "+new Date().toLocaleTimeString("en-KE",{hour:"2-digit",minute:"2-digit"}),
+      channel: "Email",
+      subject: composeSubj || draftPrompt.slice(0,60),
+      body: aiDraft || draftPrompt,
+      read: true,
+    };
+    setComms(cs => [msg, ...cs]);
+    setCompose(false); setAiDraft(""); setDraftPrompt(""); setComposeTo(""); setComposeSubj(""); setComposeCase(cases[0]?.id||"");
+    toast("Message saved to communications.", "success");
   };
   return (
     <div className="grid2">
@@ -2560,15 +2615,33 @@ function CommsView({ comms, setComms, cases, callAI, currentUser, isScoped }) {
           <button className="btn btn-gold btn-sm" onClick={() => setCompose(!compose)}>✉ Compose</button>
         </div>
         {compose && (
-          <div className="ai-glow mb12">
-            <div className="ai-hd">✦ AI-Drafted Correspondence</div>
-            <div className="form-group">
-              <label>Describe what to draft</label>
-              <input placeholder="e.g. Update client Njiru on the April 10 mention, professional tone" value={draftPrompt} onChange={e => setDraftPrompt(e.target.value)} />
+          <div className="card mb12" style={{border:"1px solid var(--gold3)"}}>
+            <div className="card-hd"><span className="card-title">✉ Compose Message</span><button className="close-x" onClick={()=>setCompose(false)}>✕</button></div>
+            <div className="card-body">
+              <div className="form-row">
+                <div className="form-group"><label>To</label><input placeholder="Recipient name or client" value={composeTo} onChange={e=>setComposeTo(e.target.value)} /></div>
+                <div className="form-group"><label>Case Ref</label>
+                  <select value={composeCase} onChange={e=>setComposeCase(e.target.value)}>
+                    <option value="">— General —</option>
+                    {cases.map(c=><option key={c.id} value={c.id}>{c.id}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group"><label>Subject</label><input placeholder="Message subject" value={composeSubj} onChange={e=>setComposeSubj(e.target.value)} /></div>
+              <div className="ai-glow mb8" style={{padding:10}}>
+                <div className="ai-hd" style={{marginBottom:6}}>✦ AI Draft Assistant</div>
+                <input placeholder="Describe what to draft, e.g. Update client on hearing date…" value={draftPrompt} onChange={e=>setDraftPrompt(e.target.value)} style={{marginBottom:6}} />
+                <button className="btn btn-blue btn-sm" onClick={draft} disabled={draftLoading}>{draftLoading?"Drafting…":"Generate Draft"}</button>
+              </div>
+              <div className="form-group">
+                <label>Message Body</label>
+                <textarea style={{minHeight:120}} placeholder="Type message or generate with AI above…" value={aiDraft} onChange={e=>setAiDraft(e.target.value)} />
+              </div>
+              <div className="flex gap8" style={{justifyContent:"flex-end"}}>
+                <button className="btn btn-ghost" onClick={()=>{setCompose(false);setAiDraft("");setDraftPrompt("");}}>Cancel</button>
+                <button className="btn btn-gold" onClick={sendMsg} disabled={!aiDraft.trim()}>✉ Save Message</button>
+              </div>
             </div>
-            <button className="btn btn-blue btn-sm mb8" onClick={draft} disabled={draftLoading}>{draftLoading ? "Drafting…" : "Generate Draft"}</button>
-            {aiDraft && <textarea style={{ minHeight: 120 }} value={aiDraft} onChange={e => setAiDraft(e.target.value)} />}
-            {aiDraft && <div className="flex gap8 mt8"><button className="btn btn-gold btn-sm">Send</button><button className="btn btn-ghost btn-sm">Save</button></div>}
           </div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2641,7 +2714,7 @@ function BillingView({ timeEntries, setTimeEntries, cases, currentUser, isScoped
           <table>
             <thead><tr><th>Date</th><th>Case Ref</th><th>Advocate</th><th>Description</th><th>Hrs</th><th>Rate (KES)</th><th>Amount (KES)</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {!timeEntries.length&&<tr><td colSpan={9} style={{textAlign:"center",padding:30,color:"var(--muted)"}}>No entries yet. Click + Time to log hours.</td></tr>}
+              {!timeEntries.length&&<tr><td colSpan={9}><div style={{textAlign:"center",padding:30,color:"var(--muted)"}}><div style={{fontSize:32,marginBottom:8}}>⏱</div><div>No time entries yet.</div><div style={{fontSize:11,marginTop:4}}>Click <strong>+ Time</strong> in the top bar to log billable hours.</div></div></td></tr>}
               {timeEntries.map(t => editId===t.id ? (
                 <tr key={t.id} style={{background:"var(--gold4)"}}>
                   <td className="mono muted" style={{fontSize:11}}>{t.date}</td>
@@ -2689,6 +2762,15 @@ function InvoicesView({ invoices, setInvoices, clients, callAI, currentUser, isS
     const r = await callAI(`Analyse this billing position and recommend debt collection actions for a Kenyan law firm: ${s}. Reference applicable Kenyan law where relevant (e.g. Civil Procedure Act for debt recovery).`);
     setAiSummary(r); setAiLoading(false);
   };
+  if (!invoices.length) return (
+    <div>
+      <div style={{textAlign:"center",padding:"60px 20px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:"var(--r10)",color:"var(--muted)",marginBottom:16}}>
+        <div style={{fontSize:40,marginBottom:12}}>◧</div>
+        <div style={{fontSize:14,marginBottom:6}}>No invoices yet</div>
+        <div style={{fontSize:12}}>Click <strong>+ Invoice</strong> in the top bar to create your first invoice.</div>
+      </div>
+    </div>
+  );
   return (
     <div>
       <ScopeBanner currentUser={currentUser} count={invoices.length} noun="invoice"
@@ -2887,11 +2969,6 @@ function AIHub({ callAI, currentUser }) {
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════
 function Reports({ cases, invoices, team, timeEntries, tasks, clients }) {
-  const typeCount = CASE_TYPES.slice(0, 5).map(t => ({ t, c: cases.filter(c => c.type === t).length }));
-  const maxT = Math.max(...typeCount.map(t => t.c), 1);
-  const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
-  const rev = [420, 680, 550, 900, 780, 1150, 880, 1020, 1300, 950, 1420, 1180].map(v => Math.round(v * 0.8));
-  const maxR = Math.max(...rev);
   return (
     <div>
       <div className="stats-row cols-4">
@@ -2902,28 +2979,36 @@ function Reports({ cases, invoices, team, timeEntries, tasks, clients }) {
       </div>
       <div className="grid2">
         <div className="card">
-          <div className="card-hd"><span className="card-title">Matters by Type</span></div>
+          <div className="card-hd"><span className="card-title">Cases by Type</span></div>
           <div className="card-body">
-            {typeCount.map(({ t, c }) => (
-              <div key={t} style={{ marginBottom: 12 }}>
-                <div className="flex fac fjb" style={{ marginBottom: 4 }}><span style={{ fontSize: 12 }}>{t}</span><span className="mono light">{c}</span></div>
-                <div className="pbar" style={{ height: 6 }}><div className="pfill" style={{ width: (c / maxT * 100) + "%" }} /></div>
-              </div>
-            ))}
+            {!cases.length&&<div className="muted" style={{textAlign:"center",padding:20,fontSize:12}}>No cases yet.</div>}
+            {CASE_TYPES.map(t=>{
+              const count = cases.filter(c=>c.type===t).length;
+              if(!count) return null;
+              const maxCount = Math.max(...CASE_TYPES.map(x=>cases.filter(c=>c.type===x).length),1);
+              return(
+                <div key={t} style={{marginBottom:12}}>
+                  <div className="flex fac fjb" style={{marginBottom:4}}><span style={{fontSize:12}}>{t}</span><span className="mono light">{count}</span></div>
+                  <div className="pbar" style={{height:6}}><div className="pfill" style={{width:(count/maxCount*100)+"%"}}/></div>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className="card">
-          <div className="card-hd"><span className="card-title">Monthly Fees (KES k)</span></div>
+          <div className="card-hd"><span className="card-title">Case Status Breakdown</span></div>
           <div className="card-body">
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 120, paddingBottom: 22, position: "relative" }}>
-              <div style={{ position: "absolute", bottom: 20, left: 0, right: 0, height: 1, background: "var(--border)" }} />
-              {rev.map((v, i) => (
-                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                  <div style={{ width: "100%", borderRadius: "3px 3px 0 0", background: i === 2 ? "var(--gold)" : "var(--blue3)", border: i === 2 ? "none" : "1px solid var(--blue)", height: (v / maxR * 96) + "px", minWidth: 14 }} />
-                  <div style={{ position: "absolute", bottom: 2, fontSize: 8, color: "var(--muted)" }}>{months[i]}</div>
+            {!cases.length&&<div className="muted" style={{textAlign:"center",padding:20,fontSize:12}}>No cases yet.</div>}
+            {["Active","Pending","Closed"].map(s=>{
+              const cnt = cases.filter(c=>c.status===s).length;
+              const pct = cases.length?Math.round(cnt/cases.length*100):0;
+              return(
+                <div key={s} style={{marginBottom:14}}>
+                  <div className="flex fac fjb mb4"><SBadge s={s}/><span className="mono light">{cnt} ({pct}%)</span></div>
+                  <div className="pbar" style={{height:6}}><div className="pfill" style={{width:pct+"%",background:s==="Active"?"var(--green)":s==="Pending"?"var(--amber)":"var(--muted)"}}/></div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -3080,6 +3165,7 @@ function ConflictChecker({ clients, cases, callAI }) {
           <div className="card">
             <div className="card-hd"><span className="card-title">Current Client Register</span></div>
             <div className="card-body">
+{!clients.filter(c=>c.status==="Active").length&&<div className="muted" style={{fontSize:12,padding:20,textAlign:"center"}}>No active clients yet.</div>}
               {clients.filter(c => c.status === "Active").map(c => (
                 <div key={c.id} className="flex fac fjb" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid var(--border)" }}>
                   <div>
@@ -3111,7 +3197,17 @@ function ConflictChecker({ clients, cases, callAI }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CASE DETAIL MODAL
 // ═══════════════════════════════════════════════════════════════════════════
-function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks, evidence, setEvidence, currentUser }) {
+function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks, evidence, setEvidence, currentUser, setCases }) {
+  const [progress, setProgress] = useState(c.progress||0);
+  const [stage, setStage]       = useState(c.stage||"Intake");
+  const [status, setStatus]     = useState(c.status||"Pending");
+  const [notes, setNotes]       = useState(c.notes||"");
+  const [noteSaved, setNoteSaved] = useState(false);
+  const saveProgress = () => {
+    if (setCases) setCases(cs => cs.map(x => x.id===c.id ? {...x,progress,stage,status,notes} : x));
+    setNoteSaved(true); setTimeout(()=>setNoteSaved(false),2000);
+    toast("Case updated.","success");
+  };
   const caseEv = (evidence||{})[c.id] || [];
   const detailFileRef = useRef(null);
   const handleDetailUpload = (files) => {
@@ -3168,25 +3264,53 @@ function CaseDetailModal({ case_: c, onClose, callAI, tasks, setTasks, evidence,
         <div style={{ padding: "18px 20px 22px", maxHeight: "50vh", overflowY: "auto" }}>
           {tab === "overview" && (
             <div className="grid2">
-              <div className="card">
-                <div className="card-hd"><span className="card-title">Case Notes</span></div>
-                <div className="card-body">
-                  <p style={{ lineHeight: 1.8, fontSize: 12.5 }}>{c.notes}</p>
-                  <textarea style={{ marginTop: 12, minHeight: 60 }} placeholder="Add a note…" />
-                  <button className="btn btn-ghost btn-sm mt8">+ Save Note</button>
-                </div>
-              </div>
               <div>
-                <div className="card">
-                  <div className="card-hd"><span className="card-title">Matter Stats</span></div>
+                <div className="card mb12">
+                  <div className="card-hd"><span className="card-title">Case Notes</span></div>
                   <div className="card-body">
-                    {[["Documents", c.docs], ["Evidence Items", c.evidence], ["Billed (KES)", c.billable?.toLocaleString()], ["Open Tasks", caseTasks.filter(t => !t.done).length]].map(([l, v]) => (
-                      <div key={l} className="flex fac fjb" style={{ marginBottom: 9 }}>
-                        <span className="muted" style={{ fontSize: 12 }}>{l}</span>
-                        <span className="serif light" style={{ fontSize: 18 }}>{v}</span>
-                      </div>
-                    ))}
+                    <textarea style={{minHeight:80}} placeholder="Add notes…" value={notes} onChange={e=>setNotes(e.target.value)} />
+                    {(currentUser?.role==="admin"||c.advocate===currentUser?.name)&&(
+                      <button className="btn btn-ghost btn-sm mt8" onClick={saveProgress}>{noteSaved?"✓ Saved":"Save Notes"}</button>
+                    )}
                   </div>
+                </div>
+                {(currentUser?.role==="admin"||c.advocate===currentUser?.name)&&(
+                  <div className="card">
+                    <div className="card-hd"><span className="card-title">Update Progress</span></div>
+                    <div className="card-body">
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Stage</label>
+                          <select value={stage} onChange={e=>setStage(e.target.value)}>
+                            {["Intake","Investigation","Preparation","Hearing","Judgment","Closed"].map(s=><option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Status</label>
+                          <select value={status} onChange={e=>setStatus(e.target.value)}>
+                            {["Pending","Active","Closed"].map(s=><option key={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Progress — {progress}%</label>
+                        <input type="range" min={0} max={100} step={5} value={progress} onChange={e=>setProgress(Number(e.target.value))} style={{width:"100%",accentColor:"var(--gold)"}} />
+                        <div className="pbar mt4"><div className="pfill" style={{width:progress+"%"}}/></div>
+                      </div>
+                      <button className="btn btn-gold btn-sm" onClick={saveProgress}>Save Changes</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="card">
+                <div className="card-hd"><span className="card-title">Matter Stats</span></div>
+                <div className="card-body">
+                  {[["Evidence Items",(Object.values(evidence||{})).flat().filter(e=>e.caseId===c.id).length||c.evidence||0],["Open Tasks",caseTasks.filter(t=>!t.done).length],["Completed Tasks",caseTasks.filter(t=>t.done).length],["Billed (KES)",(c.billable||0).toLocaleString()]].map(([l,v])=>(
+                    <div key={l} className="flex fac fjb" style={{marginBottom:9}}>
+                      <span className="muted" style={{fontSize:12}}>{l}</span>
+                      <span className="serif light" style={{fontSize:18}}>{v}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -3454,7 +3578,8 @@ function NewClientModal({ setClients, onClose, users }) {
 }
 
 function NewTimeModal({ setTimeEntries, cases, team, onClose }) {
-  const [f, setF] = useState({ caseId: cases[0]?.id || "", advocate: team[0]?.name || "", desc: "", hrs: "", rate: team[0]?.rate || 0 });
+  const lawyers = team.filter(t => t.role==="lawyer"||t.role==="paralegal");
+  const [f, setF] = useState({ caseId: cases[0]?.id || "", advocate: lawyers[0]?.name || team[0]?.name || "", desc: "", hrs: "", rate: lawyers[0]?.rate || team[0]?.rate || 0 });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const submit = () => {
     if (!f.desc || !f.hrs) return;
@@ -3468,7 +3593,7 @@ function NewTimeModal({ setTimeEntries, cases, team, onClose }) {
         <div className="modal-body">
           <div className="form-row">
             <div className="form-group"><label>Matter *</label><select value={f.caseId} onChange={e => set("caseId", e.target.value)}>{cases.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}</select></div>
-            <div className="form-group"><label>Advocate</label><select value={f.advocate} onChange={e => { const m = team.find(t => t.name === e.target.value); set("advocate", e.target.value); if (m) set("rate", m.rate); }}>{team.map(t => <option key={t.id}>{t.name}</option>)}</select></div>
+            <div className="form-group"><label>Advocate</label><select value={f.advocate} onChange={e=>{const m=team.find(t=>t.name===e.target.value);set("advocate",e.target.value);if(m)set("rate",m.rate);}}><option value="">Select advocate…</option>{team.map(t=><option key={t.id} value={t.name}>{t.name} ({ROLE_LABELS[t.role]||t.role})</option>)}</select></div>
           </div>
           <div className="form-group"><label>Work Description *</label><input placeholder="e.g. Court mention — Milimani Law Courts" value={f.desc} onChange={e => set("desc", e.target.value)} /></div>
           <div className="form-row">
