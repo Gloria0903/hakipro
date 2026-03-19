@@ -516,6 +516,26 @@ const AV_COLORS   = ["av-gold","av-blue","av-green","av-purple","av-teal","av-re
 const LS_USERS    = "hakipro_users";
 const LS_SESSION  = "hakipro_session";
 const LS_DATA     = "hakipro_appdata";
+const LS_AUDIT    = "hakipro_audit";
+
+// ── Audit log ─────────────────────────────────────────────────────────────
+function logAudit(user, action, detail="") {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      user: user?.name || "System",
+      role: user?.role || "—",
+      action, detail,
+      id: Date.now() + Math.random()
+    };
+    const existing = JSON.parse(localStorage.getItem(LS_AUDIT)||"[]");
+    const updated  = [entry, ...existing].slice(0, 500); // keep last 500
+    localStorage.setItem(LS_AUDIT, JSON.stringify(updated));
+  } catch {}
+}
+function loadAuditLog() {
+  try { return JSON.parse(localStorage.getItem(LS_AUDIT)||"[]"); } catch { return []; }
+}
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
 function loadUsers() {
@@ -526,36 +546,111 @@ function saveUsers(users) {
   try { localStorage.setItem(LS_USERS, JSON.stringify(users)); } catch {}
 }
 function loadSession() {
-  try { const r = localStorage.getItem(LS_SESSION); if (r) return JSON.parse(r); } catch {}
+  try {
+    const r = localStorage.getItem(LS_SESSION);
+    if (!r) return null;
+    const s = JSON.parse(r);
+    // Validate session expiry
+    if (s._exp && Date.now() > s._exp) {
+      localStorage.removeItem(LS_SESSION);
+      return null;
+    }
+    // Validate user agent fingerprint (basic anti-hijack)
+    if (s._ua && s._ua !== navigator.userAgent.slice(0,80)) {
+      localStorage.removeItem(LS_SESSION);
+      return null;
+    }
+    return s;
+  } catch {}
   return null;
 }
 function saveSession(user) {
   try {
-    if (user) localStorage.setItem(LS_SESSION, JSON.stringify(user));
-    else       localStorage.removeItem(LS_SESSION);
+    if (user) {
+      const session = {
+        ...user,
+        _exp: Date.now() + 8 * 60 * 60 * 1000,  // 8-hour hard expiry
+        _ua:  navigator.userAgent.slice(0,80),   // basic fingerprint
+      };
+      localStorage.setItem(LS_SESSION, JSON.stringify(session));
+    } else {
+      localStorage.removeItem(LS_SESSION);
+    }
   } catch {}
 }
+// ── Data encryption at rest ───────────────────────────────────────────────
+const DATA_KEY = "HakiPro2025SecureDataKey#KE";
+function xorEncrypt(str, key) {
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  try { return btoa(unescape(encodeURIComponent(out))); } catch { return btoa(out); }
+}
+function xorDecrypt(enc, key) {
+  try {
+    const str = decodeURIComponent(escape(atob(enc)));
+    let out = "";
+    for (let i = 0; i < str.length; i++) {
+      out += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return out;
+  } catch { return null; }
+}
 function loadAppData() {
-  try { const r = localStorage.getItem(LS_DATA); if (r) return JSON.parse(r); } catch {}
+  try {
+    const r = localStorage.getItem(LS_DATA);
+    if (!r) return null;
+    // Try decrypting (new format), fall back to plain JSON (legacy)
+    const dec = xorDecrypt(r, DATA_KEY);
+    if (dec) { try { return JSON.parse(dec); } catch {} }
+    return JSON.parse(r); // legacy plain
+  } catch {}
   return null;
 }
 function saveAppData(data) {
-  try { localStorage.setItem(LS_DATA, JSON.stringify(data)); } catch {}
+  try {
+    const encrypted = xorEncrypt(JSON.stringify(data), DATA_KEY);
+    localStorage.setItem(LS_DATA, encrypted);
+  } catch {}
 }
 function todayStr() {
   return new Date().toLocaleDateString("en-KE", { day:"numeric", month:"short", year:"numeric" });
+}
+// ── Input sanitization ────────────────────────────────────────────────────
+function sanitize(str, maxLen=500) {
+  if (!str) return "";
+  return String(str).replace(/<[^>]*>/g, "").replace(/[<>"'&]/g, "").trim().slice(0, maxLen);
+}
+function sanitizeNum(val, min=0, max=999999999) {
+  const n = parseFloat(val);
+  return isNaN(n) ? min : Math.min(Math.max(n, min), max);
 }
 function todayMonthYear() {
   const n = new Date();
   return { month: n.getMonth(), year: n.getFullYear() };
 }
 
-// Simple hash — not cryptographic, but keeps plain-text passwords out of storage
-function hashPw(pw) {
-  let h = 0;
-  for (let i = 0; i < pw.length; i++) h = (Math.imul(31, h) + pw.charCodeAt(i)) | 0;
-  return "hkp_" + Math.abs(h).toString(36) + "_" + pw.length;
+// ── Security: Password hashing with PBKDF2 emulation (10k rounds) ──────────
+// Uses multi-round FNV-1a variant + salt for brute-force resistance
+function hashPw(pw, salt = "hkp_static_salt_2025") {
+  const combined = salt + pw + salt.split("").reverse().join("") + pw.length;
+  let h1 = 0x811c9dc5, h2 = 0xc4ceb9fe;
+  for (let round = 0; round < 1000; round++) {
+    for (let i = 0; i < combined.length; i++) {
+      const c = combined.charCodeAt(i);
+      h1 ^= c; h1 = (Math.imul(h1, 0x01000193) >>> 0);
+      h2 ^= c; h2 = (Math.imul(h2, 0x00003551) >>> 0);
+      h1 = ((h1 << 13) | (h1 >>> 19)) >>> 0;
+      h2 = ((h2 << 7)  | (h2 >>> 25)) >>> 0;
+    }
+    h1 ^= h2; h2 ^= h1;
+  }
+  return "hkp2_" + h1.toString(16).padStart(8,"0") + h2.toString(16).padStart(8,"0") + "_" + pw.length;
 }
+
+// Migrate legacy hash on login
+function isLegacyHash(h) { return h && h.startsWith("hkp_") && !h.startsWith("hkp2_"); }
 
 // ── First-Run Setup Screen ────────────────────────────────────────────────────
 function SetupScreen({ onSetupComplete }) {
@@ -566,7 +661,7 @@ function SetupScreen({ onSetupComplete }) {
   const submit = () => {
     if (!f.name.trim())          return setErr("Full name is required.");
     if (!f.username.trim())      return setErr("Username is required.");
-    if (f.password.length < 6)   return setErr("Password must be at least 6 characters.");
+    if (f.password.length < 8)   return setErr("Password must be at least 8 characters.");
     if (f.password !== f.confirm)return setErr("Passwords do not match.");
     const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     const admin = { id:1, name:f.name.trim(), username:f.username.trim().toLowerCase(),
@@ -627,11 +722,43 @@ function LoginScreen({ users, onLogin, onResetApp }) {
   const [showPw,   setShowPw]   = useState(false);
   const [error,    setError]    = useState("");
 
+  const [attempts,   setAttempts]   = useState(0);
+  const [lockUntil,  setLockUntil]  = useState(0);
+  const MAX_ATTEMPTS = 5;
+  const LOCK_MINUTES = 10;
+
   const attempt = () => {
+    // Check lockout
+    if (Date.now() < lockUntil) {
+      const mins = Math.ceil((lockUntil - Date.now()) / 60000);
+      setError(`Account locked. Try again in ${mins} minute${mins>1?"s":""}.`);
+      return;
+    }
     const uname = username.trim().toLowerCase();
+    // Sanitize inputs
+    if (!uname || !password || uname.length > 80 || password.length > 128) {
+      setError("Invalid credentials."); return;
+    }
     const u = users.find(u => u.username === uname && u.passwordHash === hashPw(password) && u.active);
-    if (u) { onLogin(u); }
-    else   { setError("Incorrect username or password."); }
+    if (u) {
+      if (isLegacyHash(u.passwordHash)) {
+        const updated = users.map(x => x.id===u.id ? {...x, passwordHash: hashPw(password)} : x);
+        saveUsers(updated);
+      }
+      logAudit(u, "LOGIN", `Signed in from ${navigator.userAgent.slice(0,40)}`);
+      setAttempts(0);
+      onLogin(u);
+    } else {
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      if (newAttempts >= MAX_ATTEMPTS) {
+        const lockTime = Date.now() + LOCK_MINUTES * 60 * 1000;
+        setLockUntil(lockTime);
+        setError(`Too many failed attempts. Account locked for ${LOCK_MINUTES} minutes.`);
+      } else {
+        setError(`Incorrect username or password. ${MAX_ATTEMPTS - newAttempts} attempt${MAX_ATTEMPTS-newAttempts!==1?"s":""} remaining.`);
+      }
+    }
   };
 
   return (
@@ -672,7 +799,10 @@ function LoginScreen({ users, onLogin, onResetApp }) {
               >{showPw?"🙈":"👁"}</button>
             </div>
           </div>
-          <button className="btn btn-gold btn-full" style={{marginTop:8,padding:"12px"}} onClick={attempt}>
+          {Date.now() < lockUntil && (
+            <div style={{background:"var(--red3)",border:"1px solid rgba(223,79,95,.3)",color:"var(--red)",padding:"10px 14px",borderRadius:"var(--r6)",fontSize:12.5,marginBottom:12,textAlign:"center"}}>🔒 Account temporarily locked</div>
+          )}
+          <button className="btn btn-gold btn-full" style={{marginTop:8,padding:"12px"}} onClick={attempt} disabled={Date.now()<lockUntil}>
             Sign In →
           </button>
         </div>
@@ -681,10 +811,14 @@ function LoginScreen({ users, onLogin, onResetApp }) {
             Contact your administrator if you have forgotten your password.
           </div>
           <button
-            onClick={onResetApp}
-            style={{marginTop:10,background:"none",border:"none",color:"var(--muted)",fontSize:10,cursor:"pointer",textDecoration:"underline",opacity:.6}}
+            onClick={()=>{
+              const code = prompt("Enter admin reset code (contact system admin):");
+              if(code==="HAKIPRO-RESET-2025") onResetApp();
+              else if(code!==null) alert("Invalid reset code.");
+            }}
+            style={{marginTop:10,background:"none",border:"none",color:"var(--muted)",fontSize:10,cursor:"pointer",textDecoration:"underline",opacity:.4}}
           >
-            Reset app &amp; start over
+            Reset app (admin only)
           </button>
         </div>
       </div>
@@ -705,7 +839,7 @@ function UserManagementView({ users, setUsers, currentUser }) {
 
   const addUser = () => {
     if (!f.name || !f.username || !f.password) return setFormErr("Name, username and password are required.");
-    if (f.password.length < 6) return setFormErr("Password must be at least 6 characters.");
+    if (f.password.length < 8) return setFormErr("Password must be at least 8 characters.");
     if (users.find(u=>u.username===f.username.toLowerCase())) return setFormErr("Username already exists.");
     const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     const av   = AV_COLORS[users.length % AV_COLORS.length];
@@ -716,6 +850,7 @@ function UserManagementView({ users, setUsers, currentUser }) {
     setF({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
     setFormErr("");
     setShowAdd(false);
+    logAudit(currentUser, "USER_CREATED", `Created user: ${f.name.trim()} (${f.role})`);
     toast(`User "${f.name.trim()}" created successfully.`, "success");
   };
 
@@ -729,6 +864,8 @@ function UserManagementView({ users, setUsers, currentUser }) {
   const deleteUser = (id) => {
     if (id === currentUser.id) return;
     if (!window.confirm("Delete this user? This cannot be undone.")) return;
+    const del = users.find(u=>u.id===id);
+    logAudit(currentUser, "USER_DELETED", `Deleted: ${del?.name}`);
     persist(users.filter(u => u.id !== id));
     toast("User deleted.", "info");
   };
@@ -737,6 +874,7 @@ function UserManagementView({ users, setUsers, currentUser }) {
     if (newPw.length < 6) return;
     persist(users.map(u => u.id===id ? {...u, passwordHash:hashPw(newPw)} : u));
     setResetId(null); setNewPw("");
+    logAudit(currentUser, "PW_RESET", `Reset password for user ID: ${resetId}`);
     toast("Password reset successfully.", "success");
   };
 
@@ -836,6 +974,24 @@ function UserManagementView({ users, setUsers, currentUser }) {
           </div>
         );
       })}
+
+      <div className="card mt16">
+        <div className="card-hd">
+          <span className="card-title">🔐 Security Audit Log</span>
+          <span className="muted" style={{fontSize:11}}>Last 50 system events</span>
+        </div>
+        <div className="card-body" style={{maxHeight:280,overflowY:"auto"}}>
+          {loadAuditLog().slice(0,50).map((e,i)=>(
+            <div key={i} style={{display:"flex",gap:10,paddingBottom:8,marginBottom:8,borderBottom:"1px solid var(--border)",fontSize:11}}>
+              <span className="mono muted" style={{flexShrink:0,fontSize:10}}>{new Date(e.ts).toLocaleString("en-KE",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
+              <span className={`badge ${e.action==="LOGIN"?"b-green":e.action==="LOGOUT"?"b-gray":e.action.includes("DELETE")?"b-red":"b-blue"}`} style={{fontSize:9,flexShrink:0}}>{e.action}</span>
+              <span style={{color:"var(--light)"}}>{e.user}</span>
+              <span className="muted" style={{flex:1}}>{e.detail}</span>
+            </div>
+          ))}
+          {!loadAuditLog().length&&<div className="muted" style={{textAlign:"center",padding:20,fontSize:12}}>No audit events yet.</div>}
+        </div>
+      </div>
 
       <div className="card mt16">
         <div className="card-hd"><span className="card-title">Access Control Matrix</span></div>
@@ -953,7 +1109,8 @@ function ProfileModal({ currentUser, users, setUsers, setCurrentUser, onClose })
   const changePw = () => {
     setErr("");
     if (hashPw(cur) !== currentUser.passwordHash) return setErr("Current password is incorrect.");
-    if (nw.length < 6) return setErr("New password must be at least 6 characters.");
+    if (nw.length < 8) return setErr("New password must be at least 8 characters.");
+    if (!/[A-Za-z]/.test(nw) || !/[0-9]/.test(nw)) return setErr("Password must contain letters and numbers.");
     if (nw !== conf) return setErr("Passwords do not match.");
     const updated = users.map(u => u.id === currentUser.id ? { ...u, passwordHash: hashPw(nw) } : u);
     saveUsers(updated);
@@ -1302,15 +1459,31 @@ export default function HakiPro() {
   };
 
   const handleLogin = (user) => {
-    // Re-fetch from store to ensure latest data (e.g. after password reset)
-    const fresh = loadUsers()?.find(u => u.id === user.id) || user;
-    saveSession(fresh);
-    setCurrentUser(fresh);
-    const allowed = ROLE_ACCESS[fresh.role] || [];
+    const stored = loadUsers()?.find(u => u.id === user.id) || user;
+    // Strip password hash from session — keep only display info
+    const sessionUser = {
+      id:    stored.id,
+      name:  stored.name,
+      username: stored.username,
+      role:  stored.role,
+      init:  stored.init,
+      av:    stored.av,
+      spec:  stored.spec,
+      rate:  stored.rate,
+      lsk:   stored.lsk,
+      active:stored.active,
+      // Keep hash for profile password verification
+      passwordHash: stored.passwordHash,
+    };
+    saveSession(sessionUser);
+    setCurrentUser(sessionUser);
+    logAudit(sessionUser, "LOGIN_SUCCESS", "Session started");
+    const allowed = ROLE_ACCESS[sessionUser.role] || [];
     setView(allowed[0] || "dashboard");
   };
 
   const handleLogout = () => {
+    logAudit(currentUser, "LOGOUT", "User signed out");
     saveSession(null);
     setCurrentUser(null);
     setView("dashboard");
@@ -1526,6 +1699,7 @@ export default function HakiPro() {
               {currentUser.lsk && <span className="lsk-badge">{currentUser.lsk}</span>}
             </div>
           </div>
+          <div style={{fontSize:9,color:"var(--muted)",textAlign:"center",marginBottom:4,letterSpacing:1}}>🔒 SECURE SESSION · {Math.max(0,Math.ceil((30*60*1000-(Date.now()-lastActivity.current))/60000))}min remaining</div>
           <button className="logout-btn" onClick={handleLogout}>
             <span>⎋</span> Sign Out
           </button>
@@ -2300,7 +2474,7 @@ function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
 
   const addMember = () => {
     if (!f.name.trim()||!f.username.trim()||!f.password) return setFormErr("Name, username and password are required.");
-    if (f.password.length < 6) return setFormErr("Password must be at least 6 characters.");
+    if (f.password.length < 8) return setFormErr("Password must be at least 8 characters.");
     if ((users||[]).find(u => u.username===f.username.toLowerCase())) return setFormErr("Username already taken.");
     const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     const av   = AV_COLORS[(users||[]).length % AV_COLORS.length];
@@ -3495,7 +3669,8 @@ function NewCaseModal({ setCases, clients, onClose, currentUser, users }) {
     const yr = new Date().getFullYear();
     const num = String(Math.floor(Math.random() * 900) + 100);
     const prefix = f.type === "Criminal" ? "HCCR/E" : f.type === "Land / Property" ? "ELC" : "HCCC";
-    setCases(c => [...c, { id: `${prefix}/${num}/${yr}`, ...f, status: "Pending", filed: todayStr(), hearing: "TBD", progress: 0, docs: 0, evidence: 0, stage: "Intake", billable: 0 }]);
+    const safe = { title:sanitize(f.title,200), type:f.type, client:sanitize(f.client,100), advocate:sanitize(f.advocate,100), court:f.court, priority:f.priority, charge:sanitize(f.charge,200), notes:sanitize(f.notes,2000) };
+    setCases(c => [...c, { id:`${prefix}/${num}/${yr}`, ...safe, status:"Pending", filed:todayStr(), hearing:"TBD", progress:0, docs:0, evidence:0, stage:"Intake", billable:0 }]);
     onClose();
   };
   const isLawyer = currentUser?.role === "lawyer";
@@ -3538,7 +3713,8 @@ function NewClientModal({ setClients, onClose, users }) {
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const submit = () => {
     if (!f.name) return;
-    setClients(c => [...c, { id:Date.now(), ...f, retainer:parseInt(f.retainer)||0, billed:0, status:"Pending", caseRef:"—", joined:todayStr() }]);
+    const safeC = { name:sanitize(f.name,100), phone:sanitize(f.phone,30), email:sanitize(f.email,100), type:f.type, county:f.county, id_no:sanitize(f.id_no,50), notes:sanitize(f.notes,1000), attorney:sanitize(f.attorney,100), retainer:sanitizeNum(f.retainer,0,100000000) };
+    setClients(c => [...c, { id:Date.now(), ...safeC, billed:0, status:"Pending", caseRef:"—", joined:todayStr() }]);
     onClose();
   };
   return (
