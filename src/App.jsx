@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
-const API = "https://api.anthropic.com/v1/messages";
+const API = "/api/claude";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL STYLES — Mobile-first, production-grade
@@ -457,69 +457,21 @@ select option { background:var(--card); color:var(--light); }
 // KENYAN LAW SEED DATA
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TEAM = [
-  {id:1,name:"Wanjiku Kariuki",role:"Senior Partner",init:"WK",av:"av-gold",spec:"Criminal Law",lsk:"LSK/2008/4451",rate:35000,active:true},
-  {id:2,name:"Odhiambo Otieno",role:"Associate Advocate",init:"OO",av:"av-blue",spec:"Civil Litigation",lsk:"LSK/2015/8820",rate:22000,active:true},
-  {id:3,name:"Priscilla Njoroge",role:"Legal Investigator",init:"PN",av:"av-teal",spec:"Evidence & Forensics",lsk:"—",rate:18000,active:true},
-  {id:4,name:"Kevin Mwangi",role:"Paralegal",init:"KM",av:"av-green",spec:"Document Management",lsk:"—",rate:12000,active:true},
-  {id:5,name:"Aisha Abdullahi",role:"Associate Advocate",init:"AA",av:"av-purple",spec:"Land & Property Law",lsk:"LSK/2017/9305",rate:24000,active:true},
-  {id:6,name:"Tobias Kiprotich",role:"IT / Digital Forensics",init:"TK",av:"av-red",spec:"Digital Evidence",lsk:"—",rate:20000,active:true},
-];
+const TEAM_SEED = []; // derived from users below
 
-const CLIENTS = [
-  {id:1,name:"Emmanuel Njiru",phone:"+254 712 345 678",email:"e.njiru@email.com",type:"Individual",status:"Active",caseRef:"HCCR/E002/2025",retainer:500000,billed:320000,joined:"12 Jan 2025",attorney:"Wanjiku Kariuki",county:"Nairobi",id_no:"28456781",notes:"White-collar fraud matter. Client cooperative."},
-  {id:2,name:"Savanna Estates Ltd",phone:"+254 700 112 233",email:"legal@savannaestates.co.ke",type:"Corporate",status:"Active",caseRef:"ELC/126/2025",retainer:800000,billed:285000,joined:"3 Feb 2025",attorney:"Aisha Abdullahi",county:"Kiambu",id_no:"PVT-KE-88341",notes:"Land boundary dispute. CEO is primary contact."},
-  {id:3,name:"Dr. Grace Mutua",phone:"+254 733 987 654",email:"g.mutua@gmail.com",type:"Individual",status:"Active",caseRef:"HCCC/45/2025",retainer:600000,billed:120000,joined:"1 Mar 2025",attorney:"Odhiambo Otieno",county:"Nairobi",id_no:"34219087",notes:"Medical negligence suit against KNH."},
-  {id:4,name:"Robert Odhiambo",phone:"+254 722 445 566",email:"r.odhiambo@gmail.com",type:"Individual",status:"Closed",caseRef:"CR/448/2024",retainer:300000,billed:300000,joined:"8 Jun 2024",attorney:"Wanjiku Kariuki",county:"Kisumu",id_no:"19873442",notes:"Acquitted. Case closed March 2025."},
-  {id:5,name:"NovaTech Solutions Ltd",phone:"+254 709 880 001",email:"legal@novatech.co.ke",type:"Corporate",status:"Pending",caseRef:"—",retainer:0,billed:0,joined:"10 Mar 2025",attorney:"—",county:"Nairobi",id_no:"LTD-KE-77234",notes:"IP dispute, new enquiry."},
-];
+const CLIENTS = [];
 
-const CASES = [
-  {id:"HCCR/E002/2025",title:"Republic v. Njiru – Fraud & Theft by Agent",client:"Emmanuel Njiru",type:"Criminal",court:"High Court – Nairobi",status:"Active",priority:"High",advocate:"Wanjiku Kariuki",filed:"15 Jan 2025",hearing:"10 Apr 2025",progress:65,docs:12,evidence:8,stage:"Hearing",billable:320000,charge:"Section 317 Penal Code Cap. 63",notes:"Client charged under s.317 Penal Code. Application to exclude confession pending (s.25 Evidence Act)."},
-  {id:"ELC/126/2025",title:"Savanna Estates v. Kiambu County — Boundary Dispute",client:"Savanna Estates Ltd",type:"Land",court:"Environment & Land Court – Thika",status:"Active",priority:"Medium",advocate:"Aisha Abdullahi",filed:"5 Feb 2025",hearing:"22 May 2025",progress:40,docs:7,evidence:3,stage:"Preparation",billable:285000,charge:"Land Registration Act, 2012",notes:"Title dispute over parcel LR No. 8892/IV. Survey report awaited from county surveyor."},
-  {id:"HCCC/45/2025",title:"Mutua v. Kenyatta National Hospital – Negligence",client:"Dr. Grace Mutua",type:"Civil",court:"High Court – Nairobi",status:"Active",priority:"High",advocate:"Odhiambo Otieno",filed:"2 Mar 2025",hearing:"15 Jun 2025",progress:20,docs:4,evidence:6,stage:"Investigation",billable:120000,charge:"Law of Torts – Negligence",notes:"Misdiagnosis claim. Expert medical witness required. Hospital filed defence 5 Mar."},
-  {id:"CR/448/2024",title:"Republic v. Odhiambo — Assault",client:"Robert Odhiambo",type:"Criminal",court:"Chief Magistrate's Court – Kisumu",status:"Closed",priority:"Low",advocate:"Wanjiku Kariuki",filed:"10 Jun 2024",hearing:"—",progress:100,docs:18,evidence:14,stage:"Closed",billable:300000,charge:"Section 250 Penal Code Cap. 63",notes:"Client acquitted. Matter closed March 2025."},
-];
+const CASES = [];
 
-const TIME_ENTRIES = [
-  {id:1,caseId:"HCCR/E002/2025",advocate:"Wanjiku Kariuki",date:"11 Mar",desc:"Client conference — strategy review",hrs:2.5,rate:35000,invoiced:false},
-  {id:2,caseId:"HCCR/E002/2025",advocate:"Kevin Mwangi",date:"10 Mar",desc:"Pleadings review and court filing",hrs:4.0,rate:12000,invoiced:true},
-  {id:3,caseId:"ELC/126/2025",advocate:"Aisha Abdullahi",date:"9 Mar",desc:"Research — Land Registration Act precedents",hrs:3.0,rate:24000,invoiced:false},
-  {id:4,caseId:"HCCC/45/2025",advocate:"Priscilla Njoroge",date:"8 Mar",desc:"Evidence collection — site inspection",hrs:6.0,rate:18000,invoiced:false},
-  {id:5,caseId:"HCCR/E002/2025",advocate:"Wanjiku Kariuki",date:"7 Mar",desc:"Mention at Milimani Law Courts",hrs:3.5,rate:35000,invoiced:true},
-];
+const TIME_ENTRIES = [];
 
-const INVOICES = [
-  {id:"HKP/INV/2025/001",client:"Emmanuel Njiru",caseId:"HCCR/E002/2025",amount:122500,issued:"1 Mar 2025",due:"31 Mar 2025",status:"Paid",vat:true,items:[{desc:"Mention – Milimani Law Courts",hrs:3.5,rate:35000,amt:122500}]},
-  {id:"HKP/INV/2025/002",client:"Savanna Estates Ltd",caseId:"ELC/126/2025",amount:88000,issued:"5 Mar 2025",due:"4 Apr 2025",status:"Pending",vat:true,items:[{desc:"Legal research – Land Act precedents",hrs:3,rate:24000,amt:72000},{desc:"Client conference",hrs:2,rate:8000,amt:16000}]},
-  {id:"HKP/INV/2025/003",client:"Dr. Grace Mutua",caseId:"HCCC/45/2025",amount:108000,issued:"8 Mar 2025",due:"7 Apr 2025",status:"Overdue",vat:true,items:[{desc:"Site inspection & evidence collection",hrs:6,rate:18000,amt:108000}]},
-];
+const INVOICES = [];
 
-const TASKS = [
-  {id:1,title:"File Notice of Motion to exclude confession",caseId:"HCCR/E002/2025",assignee:"Wanjiku Kariuki",due:"20 Mar 2025",priority:"High",done:false,type:"Filing"},
-  {id:2,title:"Obtain survey report from Kiambu County surveyor",caseId:"ELC/126/2025",assignee:"Kevin Mwangi",due:"25 Mar 2025",priority:"Medium",done:false,type:"Research"},
-  {id:3,title:"Interview witness — Jane Atieno (CR eyewitness)",caseId:"HCCR/E002/2025",assignee:"Priscilla Njoroge",due:"18 Mar 2025",priority:"High",done:false,type:"Investigation"},
-  {id:4,title:"Prepare client brief for Dr. Mutua — KNH defence",caseId:"HCCC/45/2025",assignee:"Odhiambo Otieno",due:"22 Mar 2025",priority:"Medium",done:false,type:"Document"},
-  {id:5,title:"Review prosecution witness list — HCCR/E002",caseId:"HCCR/E002/2025",assignee:"Wanjiku Kariuki",due:"15 Mar 2025",priority:"High",done:true,type:"Review"},
-  {id:6,title:"Send retainer invoice to Savanna Estates",caseId:"ELC/126/2025",assignee:"Kevin Mwangi",due:"14 Mar 2025",priority:"Low",done:true,type:"Billing"},
-];
+const TASKS = [];
 
-const COMMS = [
-  {id:1,from:"Emmanuel Njiru",to:"Wanjiku Kariuki",caseId:"HCCR/E002/2025",date:"11 Mar, 9:02 AM",channel:"Email",subject:"April 10 Hearing — Preparation",body:"Dear Ms. Kariuki, I'm concerned about the April 10 mention. Could we schedule a conference before the date? I also want to understand the bail review process. Regards, Emmanuel.",read:true},
-  {id:2,from:"Wanjiku Kariuki",to:"Emmanuel Njiru",caseId:"HCCR/E002/2025",date:"11 Mar, 10:45 AM",channel:"Email",subject:"Re: April 10 Hearing — Preparation",body:"Dear Emmanuel, Let us meet on Thursday 20 March at 2 PM at our Upperhill offices. Kevin will send you a brief on what to expect. The bail review application will be argued on the same date. Best regards, Wanjiku.",read:true},
-  {id:3,from:"Savanna Estates Ltd",to:"Aisha Abdullahi",caseId:"ELC/126/2025",date:"10 Mar, 3:20 PM",channel:"Email",subject:"Survey Report — Delay from County",body:"Ms. Abdullahi, the Kiambu County surveyor has indicated a 2-week delay. How does this affect our ELC hearing timeline? CEO.",read:false},
-  {id:4,from:"System",to:"All",caseId:"HCCC/45/2025",date:"10 Mar, 12:00 PM",channel:"Notification",subject:"Evidence Uploaded — HCCC/45/2025",body:"Priscilla Njoroge uploaded 3 new items: Site photos (x2), KNH medical records.",read:false},
-];
+const COMMS = [];
 
-const EVENTS = [
-  {date:"2025-04-10",title:"Mention — HCCR/E002/2025",type:"hearing",caseId:"HCCR/E002/2025",court:"High Court Nairobi"},
-  {date:"2025-03-20",title:"Filing Deadline — Notice of Motion",type:"deadline",caseId:"HCCR/E002/2025"},
-  {date:"2025-03-18",title:"Witness Interview — J. Atieno",type:"meeting",caseId:"HCCR/E002/2025"},
-  {date:"2025-05-22",title:"Hearing — ELC/126/2025",type:"hearing",caseId:"ELC/126/2025",court:"ELC Thika"},
-  {date:"2025-03-25",title:"Survey Report Deadline",type:"deadline",caseId:"ELC/126/2025"},
-  {date:"2025-06-15",title:"Hearing — HCCC/45/2025",type:"hearing",caseId:"HCCC/45/2025",court:"High Court Nairobi"},
-  {date:"2025-03-22",title:"Client Brief — Dr. Mutua",type:"task",caseId:"HCCC/45/2025"},
-];
+const EVENTS = [];
 
 const TEMPLATES = [
   {id:1,name:"Client Engagement Letter",cat:"Onboarding",desc:"LSK-compliant retainer & engagement agreement"},
@@ -532,6 +484,15 @@ const TEMPLATES = [
   {id:8,name:"Power of Attorney",cat:"Onboarding",desc:"General and limited power of attorney"},
   {id:9,name:"Plaint (Civil Suit)",cat:"Litigation",desc:"Standard Plaint under Order 4 Civil Procedure Rules"},
   {id:10,name:"Statutory Declaration",cat:"General",desc:"Statutory declaration under Oaths & Statutory Declarations Act"},
+];
+
+const LEGAL_SPECIALIZATIONS = [
+  "Criminal Law","Civil Litigation","Land & Property Law","Family Law",
+  "Corporate & Commercial Law","Employment Law","Constitutional Law",
+  "Intellectual Property","Immigration Law","Probate & Succession",
+  "Banking & Finance","Tax Law","Environmental Law","Human Rights",
+  "Arbitration & Mediation","Evidence & Forensics","Document Management",
+  "Digital Evidence","General Practice"
 ];
 
 const KE_COURTS = ["High Court – Nairobi","High Court – Mombasa","High Court – Kisumu","High Court – Nakuru","Court of Appeal – Nairobi","Environment & Land Court – Nairobi","Environment & Land Court – Thika","Employment & Labour Relations Court","Chief Magistrate's Court – Nairobi","Senior Resident Magistrate's Court","Kadhi's Court – Nairobi","Supreme Court of Kenya"];
@@ -548,8 +509,8 @@ const ROLE_ACCESS = {
   paralegal:["tasks","calendar","evidence","comms","templates"],
 };
 
-const ROLE_LABELS = { admin:"Administrator", lawyer:"Advocate / Lawyer", paralegal:"Paralegal" };
-const ROLE_COLORS = { admin:"b-gold", lawyer:"b-blue", paralegal:"b-teal" };
+const ROLE_LABELS = { admin:"Administrator", lawyer:"Advocate / Lawyer", paralegal:"Paralegal", client:"Client" };
+const ROLE_COLORS = { admin:"b-gold", lawyer:"b-blue", paralegal:"b-teal", client:"b-purple" };
 const AV_COLORS   = ["av-gold","av-blue","av-green","av-purple","av-teal","av-red"];
 const LS_USERS    = "hakipro_users";
 const LS_SESSION  = "hakipro_session";
@@ -736,7 +697,7 @@ function UserManagementView({ users, setUsers, currentUser }) {
   const [resetId, setResetId]   = useState(null);
   const [newPw,   setNewPw]     = useState("");
   const [formErr, setFormErr]   = useState("");
-  const [f, setF] = useState({ name:"", username:"", password:"", role:"lawyer", lsk:"" });
+  const [f, setF] = useState({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
   const persist = (updated) => { saveUsers(updated); setUsers(updated); };
@@ -748,9 +709,10 @@ function UserManagementView({ users, setUsers, currentUser }) {
     const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     const av   = AV_COLORS[users.length % AV_COLORS.length];
     const newUser = { id: Date.now(), name:f.name.trim(), username:f.username.trim().toLowerCase(),
-                      passwordHash:hashPw(f.password), role:f.role, lsk:f.lsk||undefined, init, av, active:true };
+                      passwordHash:hashPw(f.password), role:f.role, lsk:f.lsk||undefined,
+                      spec:f.spec||"General Practice", rate:parseInt(f.rate)||0, init, av, active:true };
     persist([...users, newUser]);
-    setF({ name:"", username:"", password:"", role:"lawyer", lsk:"" });
+    setF({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
     setFormErr("");
     setShowAdd(false);
     toast(`User "${f.name.trim()}" created successfully.`, "success");
@@ -806,11 +768,23 @@ function UserManagementView({ users, setUsers, currentUser }) {
                   <option value="lawyer">Advocate / Lawyer</option>
                   <option value="paralegal">Paralegal</option>
                   <option value="admin">Administrator</option>
+                  <option value="client">Client (Read-only)</option>
                 </select>
               </div>
             </div>
             {f.role === "lawyer" && (
               <div className="form-group" style={{maxWidth:280}}><label>LSK Number</label><input placeholder="LSK/YYYY/XXXX" value={f.lsk} onChange={e=>set("lsk",e.target.value)} /></div>
+            )}
+            {["lawyer","paralegal"].includes(f.role) && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Specialization</label>
+                  <select value={f.spec} onChange={e=>set("spec",e.target.value)}>
+                    {LEGAL_SPECIALIZATIONS.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label>Rate (KES / hr)</label><input type="number" placeholder="e.g. 15000" value={f.rate} onChange={e=>set("rate",e.target.value)} /></div>
+              </div>
             )}
             <div className="flex gap8" style={{justifyContent:"flex-end"}}>
               <button className="btn btn-ghost" onClick={()=>{ setShowAdd(false); setFormErr(""); }}>Cancel</button>
@@ -820,13 +794,13 @@ function UserManagementView({ users, setUsers, currentUser }) {
         </div>
       )}
 
-      {["admin","lawyer","paralegal"].map(role => {
+      {["admin","lawyer","paralegal","client"].map(role => {
         const group = users.filter(u => u.role === role);
         if (!group.length) return null;
         return (
           <div key={role} className="mb16">
             <div className="flex fac gap8 mb8">
-              <span className={`badge ${ROLE_COLORS[role]}`}>{ROLE_LABELS[role]}s</span>
+              <span className={`badge ${ROLE_COLORS[role]||"b-purple"}`}>{(ROLE_LABELS[role]||role)+"s"}</span>
               <span className="muted" style={{fontSize:11}}>{group.length} user{group.length!==1?"s":""}</span>
             </div>
             <div className="um-grid">
@@ -837,6 +811,8 @@ function UserManagementView({ users, setUsers, currentUser }) {
                     <div className="um-info">
                       <div className="um-name">{u.name} {u.id===currentUser.id&&<span className="muted" style={{fontSize:10}}>(you)</span>}</div>
                       <div className="um-meta">@{u.username}{u.lsk?` · ${u.lsk}`:""}</div>
+                      {u.spec&&u.spec!=="General Practice"&&<div style={{fontSize:10,color:"var(--teal)",marginTop:1}}>{u.spec}</div>}
+                      {u.rate>0&&<div style={{fontSize:10,color:"var(--muted)",marginTop:1}}>KES {u.rate.toLocaleString()}/hr</div>}
                       <span className={`badge ${u.active?"b-green":"b-gray"}`} style={{fontSize:9,marginTop:3,display:"inline-flex"}}>{u.active?"Active":"Inactive"}</span>
                     </div>
                   </div>
@@ -1203,6 +1179,7 @@ export default function HakiPro() {
   const [timeEntries, setTimeRaw]     = useState(() => loadAppData()?.timeEntries || TIME_ENTRIES);
   const [invoices,    setInvoicesRaw] = useState(() => loadAppData()?.invoices    || INVOICES);
   const [comms,       setCommsRaw]    = useState(() => loadAppData()?.comms       || COMMS);
+  const [events,      setEventsRaw]   = useState(() => loadAppData()?.events      || EVENTS);
 
   // Wrap setters so they auto-persist
   const persist = useCallback((key, setter) => (updater) => {
@@ -1223,6 +1200,14 @@ export default function HakiPro() {
   const setTimeEntries = persist("timeEntries", setTimeRaw);
   const setInvoices    = persist("invoices",    setInvoicesRaw);
   const setComms       = persist("comms",       setCommsRaw);
+  const setEvents      = persist("events",      setEventsRaw);
+
+  // Derive TEAM dynamically from registered users
+  const TEAM = useMemo(() => users.filter(u => u.active).map(u => ({
+    id:u.id, name:u.name, role:ROLE_LABELS[u.role]||u.role,
+    init:u.init, av:u.av, spec:u.spec||"General Practice",
+    lsk:u.lsk||"—", rate:u.rate||0, active:u.active,
+  })), [users]);
 
   const [view, setView]           = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1235,6 +1220,21 @@ export default function HakiPro() {
   const unread       = comms.filter(c => !c.read).length;
   const pendingTasks = tasks.filter(t => !t.done).length;
 
+  // ── 30-min session timeout ────────────────────────────────────────
+  const lastActivity = useRef(Date.now());
+  useEffect(() => {
+    const bump = () => { lastActivity.current = Date.now(); };
+    window.addEventListener("mousemove", bump);
+    window.addEventListener("keydown", bump);
+    const timer = setInterval(() => {
+      if (currentUser && Date.now() - lastActivity.current > 30 * 60 * 1000) {
+        saveSession(null); setCurrentUser(null);
+        toast("Session expired — please sign in again.", "warn");
+      }
+    }, 60000);
+    return () => { window.removeEventListener("mousemove", bump); window.removeEventListener("keydown", bump); clearInterval(timer); };
+  }, [currentUser]);
+
   // ── All hooks must come before any conditional return ────────────
   useEffect(() => {
     let s = document.getElementById("hkp-s");
@@ -1245,6 +1245,8 @@ export default function HakiPro() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [aiChat]);
+
+  const markAllRead = () => setComms(cs => cs.map(c => ({ ...c, read: true })));
 
   // Close sidebar on nav (mobile) — only navigate to allowed views
   const navigate = useCallback((id) => {
@@ -1310,6 +1312,45 @@ export default function HakiPro() {
     setCurrentUser(null);
   };
 
+  // ── Data scoping — safe with null check so it can live before conditional returns ──
+  const scope = useMemo(() => {
+    if (!currentUser) return { cases, tasks, timeEntries, invoices, comms, clients, isScoped: false, caseIds: new Set() };
+    const role = currentUser.role;
+    const name = currentUser.name;
+    if (role === "admin") {
+      return { cases, tasks, timeEntries, invoices, comms, clients, isScoped: false, caseIds: new Set() };
+    }
+    if (role === "lawyer") {
+      const myCases   = cases.filter(c => c.advocate === name);
+      const myIds     = new Set(myCases.map(c => c.id));
+      const myTasks   = tasks.filter(t => myIds.has(t.caseId) || t.assignee === name);
+      const myTime    = timeEntries.filter(e => myIds.has(e.caseId) || e.advocate === name);
+      const myInvs    = invoices.filter(i => myIds.has(i.caseId));
+      const myComms   = comms.filter(c => myIds.has(c.caseId) || c.to === name || c.from === name);
+      const myClients = clients.filter(cl => cl.attorney === name || myIds.has(cl.caseRef));
+      return { cases: myCases, tasks: myTasks, timeEntries: myTime, invoices: myInvs,
+               comms: myComms, clients: myClients, isScoped: true, caseIds: myIds };
+    }
+    if (role === "paralegal") {
+      const myTasks = tasks.filter(t => t.assignee === name);
+      const myIds   = new Set(myTasks.map(t => t.caseId).filter(Boolean));
+      const myCases = cases.filter(c => myIds.has(c.id));
+      const myComms = comms.filter(c => myIds.has(c.caseId) || c.to === name || c.from === name);
+      return { cases: myCases, tasks: myTasks, timeEntries: [], invoices: [],
+               comms: myComms, clients: [], isScoped: true, caseIds: myIds };
+    }
+    return { cases, tasks, timeEntries, invoices, comms, clients, isScoped: false, caseIds: new Set() };
+  }, [currentUser, cases, tasks, timeEntries, invoices, comms, clients]);
+
+  const scopedUnread       = scope.comms.filter(c => !c.read).length;
+  const scopedPendingTasks = scope.tasks.filter(t => !t.done).length;
+
+  const myEvents = useMemo(() => {
+    if (!scope.isScoped) return events;
+    const ids = scope.caseIds || new Set(scope.cases.map(c => c.id));
+    return events.filter(e => !e.caseId || ids.has(e.caseId));
+  }, [events, scope]);
+
   // ── Screen routing — MUST come after all hooks ──────────────────
   if (isFirstRun)   return <SetupScreen onSetupComplete={handleSetupComplete} />;
   if (!currentUser) return <LoginScreen users={users} onLogin={handleLogin} onResetApp={handleResetApp} />;
@@ -1326,13 +1367,13 @@ export default function HakiPro() {
     { id: "pipeline",  icon: "⬡", label: "Case Pipeline" },
     { section: "Case Management" },
     { id: "cases",    icon: "⚖", label: "Cases",          badge: cases.filter(c => c.status === "Active").length },
-    { id: "tasks",    icon: "✓", label: "Tasks",           badge: tasks.filter(t => !t.done).length },
+    { id: "tasks",    icon: "✓", label: "Tasks",           badge: tasks.filter(t=>!t.done).length },
     { id: "calendar", icon: "▦", label: "Court Calendar" },
     { id: "evidence", icon: "🔍", label: "Evidence Vault" },
     { section: "People" },
     { id: "clients",  icon: "◉", label: "Clients" },
     { id: "team",     icon: "◎", label: "Advocates & Staff" },
-    { id: "comms",    icon: "✉", label: "Communications",  badge: comms.filter(c => !c.read).length },
+    { id: "comms",    icon: "✉", label: "Communications",  badge: comms.filter(c=>!c.read).length },
     { section: "Finance" },
     { id: "billing",  icon: "$", label: "Time & Billing" },
     { id: "invoices", icon: "◧", label: "Invoices" },
@@ -1371,8 +1412,8 @@ export default function HakiPro() {
   // Bottom nav items (mobile) — role-filtered
   const BNAV_ALL = [
     { id: "dashboard", icon: "◈", label: "Home" },
-    { id: "cases",     icon: "⚖", label: "Cases",   badge: cases.filter(c => c.status === "Active").length },
-    { id: "tasks",     icon: "✓", label: "Tasks",   badge: tasks.filter(t => !t.done).length },
+    { id: "cases",     icon: "⚖", label: "Cases",   badge: cases.filter(c=>c.status==="Active").length },
+    { id: "tasks",     icon: "✓", label: "Tasks",   badge: tasks.filter(t=>!t.done).length },
     { id: "billing",   icon: "$", label: "Billing" },
     { id: "ai",        icon: "✦", label: "HakiAI" },
   ];
@@ -1386,45 +1427,12 @@ export default function HakiPro() {
     });
   };
 
-  // ── Data scoping — lawyers & paralegals see only their assigned matters ──
-  const scope = useMemo(() => {
-    const role = currentUser.role;
-    const name = currentUser.name;
 
-    if (role === "admin") {
-      return { cases, tasks, timeEntries, invoices, comms, clients, isScoped: false };
-    }
-
-    if (role === "lawyer") {
-      const myCases   = cases.filter(c => c.advocate === name);
-      const myIds     = new Set(myCases.map(c => c.id));
-      const myTasks   = tasks.filter(t => myIds.has(t.caseId) || t.assignee === name);
-      const myTime    = timeEntries.filter(e => myIds.has(e.caseId) || e.advocate === name);
-      const myInvs    = invoices.filter(i => myIds.has(i.caseId));
-      const myComms   = comms.filter(c => myIds.has(c.caseId) || c.to === name || c.from === name);
-      const myClients = clients.filter(cl => cl.attorney === name || myIds.has(cl.caseRef));
-      return { cases: myCases, tasks: myTasks, timeEntries: myTime, invoices: myInvs,
-               comms: myComms, clients: myClients, isScoped: true, caseIds: myIds };
-    }
-
-    if (role === "paralegal") {
-      const myTasks   = tasks.filter(t => t.assignee === name);
-      const myIds     = new Set(myTasks.map(t => t.caseId).filter(Boolean));
-      const myCases   = cases.filter(c => myIds.has(c.id));
-      const myComms   = comms.filter(c => myIds.has(c.caseId) || c.to === name || c.from === name);
-      return { cases: myCases, tasks: myTasks, timeEntries: [], invoices: [],
-               comms: myComms, clients: [], isScoped: true, caseIds: myIds };
-    }
-
-    return { cases, tasks, timeEntries, invoices, comms, clients, isScoped: false };
-  }, [currentUser, cases, tasks, timeEntries, invoices, comms, clients]);
-
-  const scopedUnread       = scope.comms.filter(c => !c.read).length;
-  const scopedPendingTasks = scope.tasks.filter(t => !t.done).length;
 
   const VIEWS = {
     dashboard: <Dashboard
       cases={scope.cases} tasks={scope.tasks} invoices={scope.invoices} comms={scope.comms}
+      clients={scope.clients.length ? scope.clients : (scope.isScoped ? [] : clients)}
       currentUser={currentUser} isScoped={scope.isScoped}
       setView={(id) => canSee(id) && setView(id)} setModal={setModal} setSel={setSel} />,
     pipeline:  <Pipeline
@@ -1437,7 +1445,7 @@ export default function HakiPro() {
       tasks={scope.tasks} setTasks={setTasks} cases={scope.cases}
       currentUser={currentUser} isScoped={scope.isScoped} />,
     calendar:  <CalendarView
-      events={EVENTS} cases={scope.cases}
+      events={myEvents} setEvents={setEvents} cases={scope.cases}
       currentUser={currentUser} isScoped={scope.isScoped} />,
     evidence:  <EvidenceVault
       cases={scope.cases} callAI={callAI}
@@ -1456,8 +1464,8 @@ export default function HakiPro() {
     invoices:  <InvoicesView
       invoices={scope.invoices} setInvoices={setInvoices} clients={clients}
       callAI={callAI} currentUser={currentUser} isScoped={scope.isScoped} />,
-    ai:        <AIHub callAI={callAI} />,
-    reports:   <Reports cases={cases} invoices={invoices} team={TEAM} timeEntries={timeEntries} />,
+    ai:        <AIHub callAI={callAI} currentUser={currentUser} />,
+    reports:   <Reports cases={cases} invoices={invoices} team={TEAM} timeEntries={timeEntries} tasks={tasks} clients={clients} />,
     templates: <TemplatesView templates={TEMPLATES} callAI={callAI} />,
     conflict:  <ConflictChecker clients={clients} cases={cases} callAI={callAI} />,
     users:     <UserManagementView users={users} setUsers={persistUsers} currentUser={currentUser} />,
@@ -1523,7 +1531,7 @@ export default function HakiPro() {
             {activeView === "invoices"&& canSee("invoices") && <button className="btn btn-gold btn-sm" onClick={() => setModal("newInvoice")}>+ Invoice</button>}
             {activeView === "tasks"   && <button className="btn btn-gold btn-sm" onClick={() => setModal("newTask")}>+ Task</button>}
             <div className="notif-btn">
-              <button className="icon-btn" aria-label="Notifications" onClick={() => navigate("comms")}>🔔</button>
+              <button className="icon-btn" aria-label="Notifications" onClick={() => { navigate("comms"); markAllRead(); }}>🔔</button>
               {scopedUnread > 0 && <span className="notif-dot" />}
             </div>
           </div>
@@ -1545,8 +1553,8 @@ export default function HakiPro() {
 
       {/* MODALS */}
       {modal === "quickai"    && <QuickAIModal aiChat={aiChat} aiMsg={aiMsg} setAiMsg={setAiMsg} sendChat={sendChat} aiLoading={aiLoading} onClose={() => setModal(null)} chatRef={chatRef} />}
-      {modal === "newCase"    && <NewCaseModal setCases={setCases} clients={clients} currentUser={currentUser} onClose={() => { setModal(null); toast("New matter opened.", "success"); }} />}
-      {modal === "newClient"  && <NewClientModal setClients={setClients} onClose={() => { setModal(null); toast("Client registered.", "success"); }} />}
+      {modal === "newCase"    && <NewCaseModal setCases={setCases} clients={clients} users={users} currentUser={currentUser} onClose={() => { setModal(null); toast("New matter opened.", "success"); }} />}
+      {modal === "newClient"  && <NewClientModal setClients={setClients} users={users} onClose={() => { setModal(null); toast("Client registered.", "success"); }} />}
       {modal === "newTime"    && <NewTimeModal setTimeEntries={setTimeEntries} cases={scope.cases} team={TEAM} onClose={() => { setModal(null); toast("Time entry logged.", "success"); }} />}
       {modal === "newTask"    && <NewTaskModal setTasks={setTasks} cases={scope.cases} team={TEAM} currentUser={currentUser} onClose={() => { setModal(null); toast("Task added.", "success"); }} />}
       {modal === "newInvoice" && <NewInvoiceModal setInvoices={setInvoices} clients={clients} cases={cases} onClose={() => setModal(null)} />}
@@ -1584,7 +1592,8 @@ function ScopeBanner({ currentUser, count, noun = "matter", extra = "" }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
-function Dashboard({ cases, tasks, invoices, comms, currentUser, isScoped, setView, setModal, setSel }) {
+function Dashboard({ cases, tasks, invoices, comms, clients, currentUser, isScoped, setView, setModal, setSel }) {
+  const [clientSel, setClientSel] = useState(null);
   const totalBilled   = invoices.reduce((a, i) => a + i.amount, 0);
   const paid          = invoices.filter(i => i.status === "Paid").reduce((a, i) => a + i.amount, 0);
   const outstanding   = invoices.filter(i => i.status !== "Paid").reduce((a, i) => a + i.amount, 0);
@@ -1687,7 +1696,58 @@ function Dashboard({ cases, tasks, invoices, comms, currentUser, isScoped, setVi
         </div>
       </div>
 
-      {/* Quick court info */}
+      {clients && clients.length > 0 && (
+        <div className="card mt16">
+          <div className="card-hd"><span className="card-title">Client Progress</span><span className="muted" style={{fontSize:11}}>Click a client to view details</span></div>
+          <div className="card-body" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+            {clients.map(cl=>{
+              const co=cases.find(c=>c.id===cl.caseRef);
+              return(
+                <div key={cl.id} onClick={()=>setClientSel(cl)}
+                  style={{background:"var(--deep)",border:"1px solid var(--border)",borderRadius:"var(--r8)",padding:12,cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor="var(--gold)"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
+                  <div className="flex fac gap8 mb8">
+                    <div className="av av-gold" style={{width:26,height:26,fontSize:11}}>{cl.name[0]}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="light truncate" style={{fontSize:12.5,fontWeight:500}}>{cl.name}</div>
+                      <div className="muted" style={{fontSize:10}}>{cl.attorney||"Unassigned"}</div>
+                    </div>
+                    <SBadge s={cl.status}/>
+                  </div>
+                  {co&&<><div className="pbar mt4"><div className="pfill" style={{width:co.progress+"%"}}/></div><div className="flex fjb mt4"><span className="muted" style={{fontSize:9}}>{co.stage}</span><span className="mono gold" style={{fontSize:9}}>{co.progress}%</span></div></>}
+                  <div className="flex fjb mt8"><span className="muted" style={{fontSize:10}}>Retainer</span><span className="mono light" style={{fontSize:10}}>KES {(cl.retainer||0).toLocaleString()}</span></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {clientSel&&(
+        <div className="overlay" onClick={()=>setClientSel(null)}>
+          <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-hd"><div><div className="modal-title">{clientSel.name}</div><div className="modal-sub">Client Progress Report</div></div><button className="close-x" onClick={()=>setClientSel(null)}>✕</button></div>
+            <div className="modal-body">
+              {[["Phone",clientSel.phone],["Email",clientSel.email],["Advocate",clientSel.attorney],["Case Ref",clientSel.caseRef],["Joined",clientSel.joined],["Status",clientSel.status]].map(([l,v])=>(
+                <div key={l} className="flex fjb" style={{marginBottom:10,paddingBottom:10,borderBottom:"1px solid var(--border)"}}>
+                  <span className="muted" style={{fontSize:12}}>{l}</span><span className="light" style={{fontSize:12.5}}>{v||"—"}</span>
+                </div>
+              ))}
+              {(()=>{const c2=cases.find(c=>c.id===clientSel.caseRef); return c2?(
+                <div style={{background:"var(--card)",borderRadius:"var(--r8)",padding:14,marginTop:4}}>
+                  <div className="muted" style={{fontSize:10,marginBottom:6}}>Case: {c2.title.slice(0,50)}</div>
+                  <div className="pbar" style={{height:8}}><div className="pfill" style={{width:c2.progress+"%"}}/></div>
+                  <div className="flex fjb mt6"><span className="muted" style={{fontSize:10}}>{c2.stage}</span><span className="mono gold" style={{fontSize:11}}>{c2.progress}%</span></div>
+                  <div className="flex fjb mt10"><span className="muted" style={{fontSize:12}}>Billed</span><span className="mono light">KES {(clientSel.billed||0).toLocaleString()}</span></div>
+                  <div className="flex fjb mt8"><span className="muted" style={{fontSize:12}}>Retainer</span><span className="mono light">KES {(clientSel.retainer||0).toLocaleString()}</span></div>
+                </div>
+              ):<div className="muted" style={{fontSize:12,marginTop:8}}>No active case linked.</div>;})()}
+              {clientSel.notes&&<div style={{marginTop:14,padding:"10px 12px",background:"var(--deep)",borderRadius:"var(--r8)",fontSize:12,lineHeight:1.7}}>{clientSel.notes}</div>}
+            </div>
+          </div>
+        </div>
+      )}
+            {/* Quick court info */}
       <div className="card mt16">
         <div className="card-hd"><span className="card-title">Kenyan Courts Reference</span></div>
         <div className="card-body">
@@ -1721,7 +1781,7 @@ function Pipeline({ cases, setSel, setModal, currentUser, isScoped }) {
     { id: "Judgment", label: "Judgment / Ruling", color: "var(--teal)" },
     { id: "Closed", label: "Closed", color: "var(--muted)" },
   ];
-  const stageMap = { "HCCR/E002/2025": "Hearing", "ELC/126/2025": "Preparation", "HCCC/45/2025": "Investigation", "CR/448/2024": "Closed" };
+  const stageMap = {};  // stage from case.stage
   return (
     <div>
       <div className="muted mb16" style={{ fontSize: 12 }}>Full matter lifecycle — from first instruction to final judgment or settlement.</div>
@@ -1869,10 +1929,23 @@ function TasksView({ tasks, setTasks, cases, currentUser, isScoped }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CALENDAR
 // ═══════════════════════════════════════════════════════════════════════════
-function CalendarView({ events, cases, currentUser, isScoped }) {
+function CalendarView({ events, setEvents, cases, currentUser, isScoped }) {
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth());
-  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth]   = useState(now.getMonth());
+  const [year,  setYear]    = useState(now.getFullYear());
+  const [addDay, setAddDay] = useState(null);
+  const [newEv,  setNewEv]  = useState({ title:"", type:"hearing", caseId:"", court:"" });
+  const mkDs = (d) => `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const saveEvent = () => {
+    if (!newEv.title.trim()) return;
+    if (setEvents) setEvents(evs => [...evs, { id:Date.now(), date:addDay, ...newEv, addedBy:currentUser.name }]);
+    toast("Event added to calendar.","success");
+    setAddDay(null); setNewEv({ title:"", type:"hearing", caseId:"", court:"" });
+  };
+  const deleteEvent = (id) => {
+    if (setEvents) setEvents(evs => evs.filter(e => e.id!==id));
+    toast("Event removed.","info");
+  };
   // For scoped roles, only show events for their cases
   const myCaseIds  = useMemo(() => new Set(cases.map(c => c.id)), [cases]);
   const myEvents   = isScoped ? events.filter(e => !e.caseId || myCaseIds.has(e.caseId)) : events;
@@ -1894,6 +1967,7 @@ function CalendarView({ events, cases, currentUser, isScoped }) {
   const ecls = { hearing: "ev-hearing", deadline: "ev-deadline", meeting: "ev-meeting", task: "ev-task" };
   const upcoming = myEvents.filter(e => new Date(e.date) >= today).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 6);
   return (
+    <>
     <div className="grid2">
       <div>
         <ScopeBanner currentUser={currentUser} count={myEvents.length} noun="calendar event" />
@@ -1908,7 +1982,7 @@ function CalendarView({ events, cases, currentUser, isScoped }) {
             const evs = evForDay(c.d, c.cur);
             const isToday = c.cur && c.d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
             return (
-              <div key={i} className={`cal-cell${!c.cur ? " other" : ""}${isToday ? " today" : ""}`}>
+              <div key={i} onClick={()=>c.cur&&setAddDay(mkDs(c.d))} className={`cal-cell${!c.cur?" other":""}${isToday?" today":""}`} style={{cursor:c.cur?"pointer":"default"}}>
                 <div className="cal-num">{c.d}</div>
                 {evs.slice(0, 2).map((e, j) => <div key={j} className={`cal-ev ${ecls[e.type] || ""}`}>{e.title}</div>)}
                 {evs.length > 2 && <div className="muted" style={{ fontSize: 8 }}>+{evs.length - 2}</div>}
@@ -1930,11 +2004,13 @@ function CalendarView({ events, cases, currentUser, isScoped }) {
       </div>
       <div>
         <div className="section-hd">Upcoming Court Dates & Deadlines</div>
+        {!upcoming.length&&<div className="muted" style={{fontSize:12,padding:"20px 0"}}>No upcoming events. Click any date to add one.</div>}
         {upcoming.map((e, i) => (
-          <div key={i} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--r8)", padding: "11px 14px", marginBottom: 8, borderLeft: `3px solid ${e.type === "hearing" ? "var(--red)" : e.type === "deadline" ? "var(--amber)" : e.type === "meeting" ? "var(--blue)" : "var(--purple)"}` }}>
+          <div key={e.id||i} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "var(--r8)", padding: "11px 14px", marginBottom: 8, borderLeft: `3px solid ${e.type === "hearing" ? "var(--red)" : e.type === "deadline" ? "var(--amber)" : e.type === "meeting" ? "var(--blue)" : "var(--purple)"}` }}>
             <div className="flex fac fjb gap8">
               <span className="light" style={{ fontSize: 12.5, fontWeight: 500, flex: 1 }}>{e.title}</span>
               <span className={`badge ${e.type === "hearing" ? "b-red" : e.type === "deadline" ? "b-amber" : e.type === "meeting" ? "b-blue" : "b-purple"}`}>{e.type}</span>
+              {(currentUser.role==="admin"||e.addedBy===currentUser.name)&&e.id&&<button className="btn btn-red btn-xs" onClick={()=>deleteEvent(e.id)}>✕</button>}
             </div>
             <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>
               {new Date(e.date).toLocaleDateString("en-KE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -1945,6 +2021,38 @@ function CalendarView({ events, cases, currentUser, isScoped }) {
         ))}
       </div>
     </div>
+      {addDay && (
+        <div className="overlay" onClick={()=>setAddDay(null)}>
+          <div className="modal" style={{width:460}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-hd">
+              <div><div className="modal-title">Add Event</div><div className="modal-sub">{new Date(addDay+"T12:00:00").toLocaleDateString("en-KE",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
+              <button className="close-x" onClick={()=>setAddDay(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group"><label>Title *</label><input placeholder="e.g. Hearing at Milimani Law Courts" value={newEv.title} onChange={e=>setNewEv(v=>({...v,title:e.target.value}))} autoFocus /></div>
+              <div className="form-row">
+                <div className="form-group"><label>Type</label>
+                  <select value={newEv.type} onChange={e=>setNewEv(v=>({...v,type:e.target.value}))}>
+                    {["hearing","deadline","meeting","task"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label>Case Ref</label>
+                  <select value={newEv.caseId} onChange={e=>setNewEv(v=>({...v,caseId:e.target.value}))}>
+                    <option value="">— General —</option>
+                    {cases.map(c=><option key={c.id} value={c.id}>{c.id}</option>)}
+                  </select>
+                </div>
+              </div>
+              {newEv.type==="hearing"&&<div className="form-group"><label>Court</label><select value={newEv.court} onChange={e=>setNewEv(v=>({...v,court:e.target.value}))}><option value="">Select court…</option>{KE_COURTS.map(c=><option key={c}>{c}</option>)}</select></div>}
+              <div className="flex gap8" style={{justifyContent:"flex-end"}}>
+                <button className="btn btn-ghost" onClick={()=>setAddDay(null)}>Cancel</button>
+                <button className="btn btn-gold" onClick={saveEvent}>Save Event</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1952,8 +2060,28 @@ function CalendarView({ events, cases, currentUser, isScoped }) {
 // EVIDENCE VAULT
 // ═══════════════════════════════════════════════════════════════════════════
 function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
-  const [selCase, setSelCase] = useState(cases[0]?.id || "");
-  const [aiResult, setAiResult] = useState(""); const [aiLoading, setAiLoading] = useState(false);
+  const [selCase,   setSelCase]   = useState(cases[0]?.id || "");
+  const [aiResult,  setAiResult]  = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [uploads,   setUploads]   = useState({});
+  const fileRef = useRef(null);
+  const uploadedEv = uploads[selCase] || [];
+
+  const handleUpload = (files) => {
+    if (!files||!files.length) return;
+    if (!selCase) { toast("Select a case first.","warn"); return; }
+    const items = Array.from(files).map(file => {
+      const ext  = file.name.split(".").pop().toLowerCase();
+      const icon = ["jpg","jpeg","png","gif","webp"].includes(ext)?"🖼️":ext==="pdf"?"📄":"📋";
+      const type = ["jpg","jpeg","png","gif","webp"].includes(ext)?"Image":ext==="pdf"?"PDF":"Document";
+      return { id:Date.now()+Math.random(), name:file.name, type, icon,
+               date:new Date().toLocaleDateString("en-KE",{day:"numeric",month:"short"}),
+               uploaded:currentUser.name, size:file.size, tags:[] };
+    });
+    setUploads(u => ({ ...u, [selCase]: [...(u[selCase]||[]), ...items] }));
+    toast(items.length+" file"+(items.length>1?"s":"")+" uploaded.","success");
+  };
+
   const allEv = [
     { id: 1, caseId: "HCCR/E002/2025", name: "CCTV Frame 01", type: "Image", icon: "🖼️", uploaded: "Priscilla Njoroge", date: "8 Mar", tags: ["CCTV", "Location"] },
     { id: 2, caseId: "HCCR/E002/2025", name: "Bank Statements Q4", type: "PDF", icon: "📄", uploaded: "Kevin Mwangi", date: "6 Mar", tags: ["Financial"] },
@@ -1964,14 +2092,17 @@ function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
     { id: 7, caseId: "HCCC/45/2025", name: "X-Ray Results", type: "Image", icon: "🩻", uploaded: "Priscilla Njoroge", date: "6 Mar", tags: ["Medical", "Scan"] },
     { id: 8, caseId: "HCCC/45/2025", name: "Incident Report", type: "Document", icon: "📋", uploaded: "Odhiambo Otieno", date: "5 Mar", tags: ["Report"] },
   ];
-  // Scope evidence to the user's cases
   const caseIdSet = useMemo(() => new Set(cases.map(c => c.id)), [cases]);
   const scopedEv  = isScoped ? allEv.filter(e => caseIdSet.has(e.caseId)) : allEv;
-  const ev = scopedEv.filter(e => !selCase || e.caseId === selCase);
+  const seedEv    = scopedEv.filter(e => !selCase || e.caseId === selCase);
+  // Show uploaded files first, fall back to seed items
+  const ev = uploadedEv.length > 0 ? uploadedEv : seedEv;
   const analyse = async () => {
     setAiLoading(true); setAiResult("");
-    const items = ev.map(e => `${e.name} (${e.type})`).join(", ");
-    const r = await callAI(`Analyse these evidence items for case ${selCase} in a Kenyan court context: ${items}. Assess admissibility under the Evidence Act Cap. 80, evidentiary weight, chain of custody requirements, and identify any gaps.`);
+    const caseObj = cases.find(c => c.id===selCase);
+    const ctx = caseObj ? `Case: ${caseObj.title}. Type: ${caseObj.type}. Charge: ${caseObj.charge}.` : "";
+    const items = ev.length ? ev.map(e => `${e.name} (${e.type})`).join(", ") : "No evidence items uploaded yet";
+    const r = await callAI(`${ctx} Analyse these evidence items in a Kenyan court context: ${items}. For each item assess: (1) admissibility under Evidence Act Cap. 80 (2) evidentiary weight (3) chain of custody requirements (4) any legal challenges. Then identify overall gaps in the evidence.`);
     setAiResult(r); setAiLoading(false);
   };
   return (
@@ -1987,11 +2118,15 @@ function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
       </div>
       <div className="grid2">
         <div>
-          <div className="drop-zone mb12">
+          <div className="drop-zone mb12"
+            onDragOver={e=>e.preventDefault()}
+            onDrop={e=>{e.preventDefault();handleUpload(e.dataTransfer.files);}}
+            onClick={()=>selCase?fileRef.current?.click():toast("Select a case first.","warn")}>
             <div className="dz-icon">📸</div>
-            <div style={{ fontSize: 13 }}>Drop evidence files here</div>
-            <div className="muted" style={{ marginTop: 4, fontSize: 11 }}>Photos, PDFs, recordings — AI auto-tags & extracts text</div>
-            <div className="link-box mt8">lexispro.firm/evidence/{selCase || "[select-case]"}/upload</div>
+            <div style={{fontSize:13}}>Drop evidence files here or click to upload</div>
+            <div className="muted" style={{marginTop:4,fontSize:11}}>Photos, PDFs, documents — AI analyses admissibility under Evidence Act</div>
+            {uploadedEv.length>0&&<div className="badge b-green" style={{marginTop:8}}>{uploadedEv.length} file{uploadedEv.length>1?"s":""} uploaded</div>}
+            <input ref={fileRef} type="file" multiple style={{display:"none"}} onChange={e=>handleUpload(e.target.files)} />
           </div>
           <div className="ev-grid">
             {ev.map(e => (
@@ -2024,7 +2159,7 @@ function EvidenceVault({ cases, callAI, currentUser, isScoped }) {
               {["Image", "PDF", "Document"].map(t => (
                 <div key={t} className="flex fac fjb" style={{ marginBottom: 10 }}>
                   <span style={{ fontSize: 12 }}>{t === "Image" ? "🖼️" : t === "PDF" ? "📄" : "📋"} {t}s</span>
-                  <span className="light serif" style={{ fontSize: 18 }}>{ev.filter(e => e.type === t).length}</span>
+                  <span className="light serif" style={{fontSize:18}}>{ev.filter(e=>e.type===t).length}</span>
                 </div>
               ))}
               <div className="divider" />
@@ -2101,11 +2236,19 @@ function ClientsView({ clients, setClients, setModal, cases, currentUser, isScop
 // TEAM VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 function TeamView({ team, cases, timeEntries }) {
+  if (!team.length) return (
+    <div style={{textAlign:"center",padding:"60px 20px",color:"var(--muted)"}}>
+      <div style={{fontSize:40,marginBottom:12}}>◎</div>
+      <div style={{fontSize:14,marginBottom:6}}>No team members yet</div>
+      <div style={{fontSize:12}}>Add lawyers, paralegals and staff via User Management.</div>
+    </div>
+  );
+  const avgRate = team.filter(t=>t.rate>0).length ? Math.round(team.filter(t=>t.rate>0).reduce((a,t)=>a+t.rate,0)/team.filter(t=>t.rate>0).length) : 0;
   return (
     <div>
       <div className="stats-row cols-3">
         <StatCard icon="◎" color="c-gold" label="Advocates & Staff" val={team.length} sub="All active" />
-        <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={"KES " + Math.round(team.filter(t => t.rate > 0).reduce((a, t) => a + t.rate, 0) / team.filter(t => t.rate > 0).length).toLocaleString()} sub="Per hour" />
+        <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={avgRate>0?"KES "+avgRate.toLocaleString():"—"} sub="Per hour" />
         <StatCard icon="⏱" color="c-blue" label="Billable Hours" val={timeEntries.reduce((a, t) => a + t.hrs, 0).toFixed(1) + "h"} sub="This month" />
       </div>
       <div className="grid-team">
@@ -2118,8 +2261,8 @@ function TeamView({ team, cases, timeEntries }) {
                 <div className={`av ${m.av}`} style={{ width: 46, height: 46, fontSize: 16, margin: "0 auto 10px" }}>{m.init}</div>
                 <div className="light" style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div>
                 <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{m.role}</div>
-                <div style={{ fontSize: 11, color: "var(--teal)", marginTop: 3 }}>{m.spec}</div>
-                {m.lsk !== "—" && <span className="lsk-badge mt8">{m.lsk}</span>}
+                <div style={{fontSize:11,color:"var(--teal)",marginTop:3}}>{m.spec||"General Practice"}</div>
+                {m.lsk&&m.lsk!=="—"&&<span className="lsk-badge mt8">{m.lsk}</span>}
               </div>
               <div style={{ padding: "10px 14px" }}>
                 {[["Rate", m.rate > 0 ? `KES ${m.rate.toLocaleString()}/hr` : "—"], ["Active Matters", active], ["Hours (Mo)", hrs.toFixed(1) + "h"]].map(([l, v]) => (
@@ -2216,8 +2359,16 @@ function CommsView({ comms, setComms, cases, callAI, currentUser, isScoped }) {
 // BILLING & TIME
 // ═══════════════════════════════════════════════════════════════════════════
 function BillingView({ timeEntries, setTimeEntries, cases, currentUser, isScoped }) {
+  const [editId, setEditId] = useState(null);
+  const [editF,  setEditF]  = useState({});
   const total      = timeEntries.reduce((a, t) => a + t.hrs * t.rate, 0);
   const uninvoiced = timeEntries.filter(t => !t.invoiced).reduce((a, t) => a + t.hrs * t.rate, 0);
+  const canEdit = (entry) => currentUser.role==="admin" || entry.advocate===currentUser.name;
+  const startEdit = (t) => { setEditId(t.id); setEditF({ desc:t.desc, hrs:t.hrs, rate:t.rate }); };
+  const saveEdit  = (id) => {
+    setTimeEntries(ts => ts.map(t => t.id===id ? {...t,...editF,hrs:parseFloat(editF.hrs),rate:parseInt(editF.rate)} : t));
+    setEditId(null); toast("Entry updated.","success");
+  };
   return (
     <div>
       <ScopeBanner currentUser={currentUser} count={timeEntries.length} noun="time entry"
@@ -2232,18 +2383,32 @@ function BillingView({ timeEntries, setTimeEntries, cases, currentUser, isScoped
         <div className="card-hd"><span className="card-title">Time Entries</span></div>
         <div className="tbl-wrap">
           <table>
-            <thead><tr><th>Date</th><th>Case Ref</th><th>Advocate</th><th>Description</th><th>Hrs</th><th>Rate (KES)</th><th>Amount (KES)</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Case Ref</th><th>Advocate</th><th>Description</th><th>Hrs</th><th>Rate (KES)</th><th>Amount (KES)</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {timeEntries.map(t => (
-                <tr key={t.id}>
-                  <td className="mono muted" style={{ fontSize: 11 }}>{t.date}</td>
-                  <td><span className="mono gold" style={{ fontSize: 11 }}>{t.caseId}</span></td>
-                  <td style={{ fontSize: 12 }}>{t.advocate}</td>
-                  <td style={{ fontSize: 12 }}>{t.desc}</td>
+              {!timeEntries.length&&<tr><td colSpan={9} style={{textAlign:"center",padding:30,color:"var(--muted)"}}>No entries yet. Click + Time to log hours.</td></tr>}
+              {timeEntries.map(t => editId===t.id ? (
+                <tr key={t.id} style={{background:"var(--gold4)"}}>
+                  <td className="mono muted" style={{fontSize:11}}>{t.date}</td>
+                  <td><span className="mono gold" style={{fontSize:11}}>{t.caseId}</span></td>
+                  <td style={{fontSize:12}}>{t.advocate}</td>
+                  <td><input value={editF.desc} onChange={e=>setEditF(f=>({...f,desc:e.target.value}))} style={{padding:"3px 6px",fontSize:11}} /></td>
+                  <td><input type="number" step="0.5" value={editF.hrs} onChange={e=>setEditF(f=>({...f,hrs:e.target.value}))} style={{padding:"3px 6px",fontSize:11,width:55}} /></td>
+                  <td><input type="number" value={editF.rate} onChange={e=>setEditF(f=>({...f,rate:e.target.value}))} style={{padding:"3px 6px",fontSize:11,width:75}} /></td>
+                  <td className="mono light">KES {(parseFloat(editF.hrs||0)*parseInt(editF.rate||0)).toLocaleString()}</td>
+                  <td><span className={`badge ${t.invoiced?"b-green":"b-amber"}`}>{t.invoiced?"Invoiced":"Pending"}</span></td>
+                  <td><div className="flex gap4"><button className="btn btn-gold btn-xs" onClick={()=>saveEdit(t.id)}>✓</button><button className="btn btn-ghost btn-xs" onClick={()=>setEditId(null)}>✕</button></div></td>
+                </tr>
+              ):(
+                <tr key={t.id} style={{cursor:canEdit(t)?"pointer":"default"}} onClick={()=>canEdit(t)&&startEdit(t)} title={canEdit(t)?"Click to edit":""}>
+                  <td className="mono muted" style={{fontSize:11}}>{t.date}</td>
+                  <td><span className="mono gold" style={{fontSize:11}}>{t.caseId}</span></td>
+                  <td style={{fontSize:12}}>{t.advocate}</td>
+                  <td style={{fontSize:12}}>{t.desc}</td>
                   <td className="mono light">{t.hrs}h</td>
-                  <td className="mono muted">{t.rate.toLocaleString()}</td>
-                  <td className="mono light" style={{ fontWeight: 600 }}>{(t.hrs * t.rate).toLocaleString()}</td>
-                  <td><span className={`badge ${t.invoiced ? "b-green" : "b-amber"}`}>{t.invoiced ? "Invoiced" : "Pending"}</span></td>
+                  <td className="mono muted">KES {t.rate.toLocaleString()}</td>
+                  <td className="mono light" style={{fontWeight:600}}>KES {(t.hrs*t.rate).toLocaleString()}</td>
+                  <td><span className={`badge ${t.invoiced?"b-green":"b-amber"}`}>{t.invoiced?"Invoiced":"Pending"}</span></td>
+                  <td>{canEdit(t)&&<span style={{color:"var(--muted)",fontSize:11}}>✏</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -2353,19 +2518,41 @@ function InvoicesView({ invoices, setInvoices, clients, callAI, currentUser, isS
 // ═══════════════════════════════════════════════════════════════════════════
 // AI HUB
 // ═══════════════════════════════════════════════════════════════════════════
-function AIHub({ callAI }) {
-  const [tool, setTool] = useState("research");
-  const [input, setInput] = useState(""); const [result, setResult] = useState(""); const [loading, setLoading] = useState(false);
-  const tools = [
-    { id: "research", icon: "📚", label: "Legal Research" },
-    { id: "analyse", icon: "📄", label: "Doc Analysis" },
-    { id: "strategy", icon: "⚖", label: "Case Strategy" },
-    { id: "draft", icon: "✍", label: "Draft Pleading" },
-    { id: "evidence", icon: "🔍", label: "Evidence Eval" },
-    { id: "risk", icon: "⚠", label: "Risk Assessment" },
-    { id: "constitution", icon: "📜", label: "Constitutional" },
-    { id: "demand", icon: "📮", label: "Demand Letter" },
+function AIHub({ callAI, currentUser }) {
+  const [tool,    setTool]    = useState("research");
+  const [input,   setInput]   = useState("");
+  const [result,  setResult]  = useState("");
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef(null);
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const isText = file.type==="text/plain"||file.name.endsWith(".txt")||file.name.endsWith(".md")||file.name.endsWith(".csv");
+    if (isText) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setInput(prev => prev + (prev ? "\n\n" : "") + "[File: " + file.name + "]\n" + ev.target.result.slice(0,3000));
+        toast("File loaded — ready for analysis.", "success");
+      };
+      reader.readAsText(file);
+    } else {
+      setInput(prev => prev + (prev ? "\n" : "") + "[Attached: " + file.name + " — paste or describe content for AI analysis]");
+      toast("File attached. Paste text content for full AI analysis.", "info");
+    }
+    e.target.value = "";
+  };
+  const allTools = [
+    { id:"research",     icon:"📚", label:"Legal Research",  roles:["admin","lawyer"] },
+    { id:"analyse",      icon:"📄", label:"Doc Analysis",    roles:["admin","lawyer"] },
+    { id:"strategy",     icon:"⚖",  label:"Case Strategy",   roles:["admin","lawyer"] },
+    { id:"draft",        icon:"✍",  label:"Draft Pleading",  roles:["admin","lawyer"] },
+    { id:"evidence",     icon:"🔍", label:"Evidence Eval",   roles:["admin","lawyer","paralegal"] },
+    { id:"risk",         icon:"⚠",  label:"Risk Assessment", roles:["admin","lawyer"] },
+    { id:"constitution", icon:"📜", label:"Constitutional",  roles:["admin","lawyer"] },
+    { id:"demand",       icon:"📮", label:"Demand Letter",   roles:["admin","lawyer"] },
+    { id:"summarise",    icon:"📋", label:"Summarise Doc",   roles:["admin","lawyer","paralegal"] },
   ];
+  const tools = allTools.filter(t => !currentUser || t.roles.includes(currentUser.role));
   const prompts = {
     research: t => `Research applicable Kenyan laws, statutes (cite Cap. numbers), and relevant case law for this legal issue: ${t}`,
     analyse: t => `Extract all key legal facts, parties, obligations, dates, and clauses from this document. Reference applicable Kenyan law where relevant: ${t}`,
@@ -2375,6 +2562,7 @@ function AIHub({ callAI }) {
     risk: t => `Conduct a legal risk assessment for this Kenyan law matter, identifying statutory risks, procedural pitfalls, and strategic vulnerabilities: ${t}`,
     constitution: t => `Analyse this issue under the Constitution of Kenya 2010, identifying relevant Articles, rights, and constitutional remedies: ${t}`,
     demand: t => `Draft a formal pre-litigation demand letter compliant with Kenyan professional standards and the Law Society of Kenya guidelines for: ${t}`,
+    summarise: t => `Provide a concise professional summary of this legal document, highlighting key facts, obligations, risks, and action points under Kenyan law: ${t}`,
   };
   const run = async () => {
     if (!input.trim()) return;
@@ -2406,10 +2594,14 @@ function AIHub({ callAI }) {
             <button className="btn btn-gold btn-full" onClick={run} disabled={loading || !input.trim()}>
               {loading ? "⏳ Processing…" : "✦ Run HakiAI Analysis"}
             </button>
-            <div className="drop-zone mt12">
+            <div className="drop-zone mt12"
+              onClick={()=>fileRef.current?.click()}
+              onDragOver={e=>e.preventDefault()}
+              onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const ev={target:{files:[f],value:""}};handleFile(ev);}}}>
               <div className="dz-icon">📎</div>
-              <div style={{ fontSize: 12.5 }}>Drop files to auto-extract text</div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>PDF, DOCX, images — AI reads & analyses</div>
+              <div style={{fontSize:12.5}}>Drop or click to upload file for analysis</div>
+              <div className="muted" style={{fontSize:11,marginTop:3}}>TXT / MD / CSV auto-read · PDF: paste text</div>
+              <input ref={fileRef} type="file" style={{display:"none"}} onChange={handleFile} accept=".txt,.md,.csv" />
             </div>
           </div>
         </div>
@@ -2438,7 +2630,7 @@ function AIHub({ callAI }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════
-function Reports({ cases, invoices, team, timeEntries }) {
+function Reports({ cases, invoices, team, timeEntries, tasks, clients }) {
   const typeCount = CASE_TYPES.slice(0, 5).map(t => ({ t, c: cases.filter(c => c.type === t).length }));
   const maxT = Math.max(...typeCount.map(t => t.c), 1);
   const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
@@ -2447,10 +2639,10 @@ function Reports({ cases, invoices, team, timeEntries }) {
   return (
     <div>
       <div className="stats-row cols-4">
-        <StatCard icon="⚖" color="c-gold" label="Win Rate" val="76%" sub="Closed matters" />
-        <StatCard icon="KES" color="c-green" label="Revenue YTD" val="KES 1.2M" sub="Jan–Mar 2025" />
-        <StatCard icon="◎" color="c-blue" label="Avg Matter Duration" val="87 days" sub="All case types" />
-        <StatCard icon="◉" color="c-purple" label="Client Retention" val="88%" sub="Repeat instructions" />
+        <StatCard icon="⚖" color="c-gold" label="Total Matters" val={cases.length} sub={cases.filter(c=>c.status==="Active").length+" active"} />
+        <StatCard icon="KES" color="c-green" label="Revenue" val={"KES "+invoices.reduce((a,i)=>a+i.amount,0).toLocaleString()} sub={"KES "+invoices.filter(i=>i.status==="Paid").reduce((a,i)=>a+i.amount,0).toLocaleString()+" paid"} />
+        <StatCard icon="✓" color="c-blue" label="Task Completion" val={tasks.length?Math.round(tasks.filter(t=>t.done).length/tasks.length*100)+"%":"—"} sub={tasks.filter(t=>t.done).length+"/"+tasks.length+" done"} />
+        <StatCard icon="◉" color="c-purple" label="Clients" val={clients.length} sub={clients.filter(c=>c.status==="Active").length+" active"} />
       </div>
       <div className="grid2">
         <div className="card">
@@ -2877,7 +3069,8 @@ function QuickAIModal({ aiChat, aiMsg, setAiMsg, sendChat, aiLoading, onClose, c
 // ═══════════════════════════════════════════════════════════════════════════
 // FORM MODALS
 // ═══════════════════════════════════════════════════════════════════════════
-function NewCaseModal({ setCases, clients, onClose, currentUser }) {
+function NewCaseModal({ setCases, clients, onClose, currentUser, users }) {
+  const lawyers = (users||[]).filter(u => u.role==="lawyer" && u.active);
   const defaultAdvocate = currentUser?.role === "lawyer" ? currentUser.name : "";
   const [f, setF] = useState({ title: "", type: "Criminal", client: "", advocate: defaultAdvocate, court: KE_COURTS[0], priority: "Medium", charge: "", notes: "" });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -2906,7 +3099,7 @@ function NewCaseModal({ setCases, clients, onClose, currentUser }) {
               <label>Lead Advocate</label>
               {isLawyer
                 ? <input value={f.advocate} readOnly style={{opacity:.7}} title="You are the lead advocate" />
-                : <select value={f.advocate} onChange={e => set("advocate", e.target.value)}><option value="">Assign later</option>{TEAM.filter(t => t.lsk !== "—").map(t => <option key={t.id}>{t.name}</option>)}</select>
+                : <select value={f.advocate} onChange={e => set("advocate", e.target.value)}><option value="">Assign later</option>{lawyers.map(l=><option key={l.id} value={l.name}>{l.name}{l.spec&&l.spec!=="General Practice"?" — "+l.spec:""}</option>)}</select>
               }
             </div>
           </div>
@@ -2923,12 +3116,13 @@ function NewCaseModal({ setCases, clients, onClose, currentUser }) {
   );
 }
 
-function NewClientModal({ setClients, onClose }) {
-  const [f, setF] = useState({ name: "", phone: "", email: "", type: "Individual", county: "Nairobi", id_no: "", notes: "" });
+function NewClientModal({ setClients, onClose, users }) {
+  const lawyers = (users||[]).filter(u => u.role==="lawyer" && u.active);
+  const [f, setF] = useState({ name:"", phone:"", email:"", type:"Individual", county:"Nairobi", id_no:"", notes:"", attorney:"", retainer:"" });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const submit = () => {
     if (!f.name) return;
-    setClients(c => [...c, { id: c.length + 1, ...f, status: "Pending", caseRef: "—", retainer: 0, billed: 0, joined: todayStr(), attorney: "—" }]);
+    setClients(c => [...c, { id:Date.now(), ...f, retainer:parseInt(f.retainer)||0, billed:0, status:"Pending", caseRef:"—", joined:todayStr() }]);
     onClose();
   };
   return (
@@ -2944,6 +3138,16 @@ function NewClientModal({ setClients, onClose }) {
           <div className="form-row">
             <div className="form-group"><label>Client Type</label><select value={f.type} onChange={e => set("type", e.target.value)}>{["Individual", "Corporate", "NGO / CBO", "Government / County", "Trust", "Partnership"].map(t => <option key={t}>{t}</option>)}</select></div>
             <div className="form-group"><label>County</label><select value={f.county} onChange={e => set("county", e.target.value)}>{KE_COUNTIES.map(c => <option key={c}>{c}</option>)}</select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Assign Advocate</label>
+              <select value={f.attorney} onChange={e => set("attorney", e.target.value)}>
+                <option value="">Unassigned</option>
+                {lawyers.map(l => <option key={l.id} value={l.name}>{l.name}{l.spec&&l.spec!=="General Practice"?" — "+l.spec:""}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Retainer (KES)</label><input type="number" placeholder="e.g. 500000" value={f.retainer} onChange={e => set("retainer", e.target.value)} /></div>
           </div>
           <div className="form-group"><label>ID / Reg. No. (KYC)</label><input placeholder="National ID, passport, or company reg. number" value={f.id_no} onChange={e => set("id_no", e.target.value)} /></div>
           <div className="form-group"><label>Initial Notes</label><textarea placeholder="Enquiry details, referral source, urgency…" value={f.notes} onChange={e => set("notes", e.target.value)} /></div>
