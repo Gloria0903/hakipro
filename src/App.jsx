@@ -2244,16 +2244,28 @@ function ClientsView({ clients, setClients, setModal, cases, currentUser, isScop
 // TEAM VIEW — with Add Staff form
 // ═══════════════════════════════════════════════════════════════════════════
 function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [formErr, setFormErr] = useState("");
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [editMem,  setEditMem]  = useState(null); // member being edited
+  const [formErr,  setFormErr]  = useState("");
+  const [editErr,  setEditErr]  = useState("");
   const [f, setF] = useState({ name:"", username:"", password:"", role:"lawyer", lsk:"", spec:"General Practice", rate:"" });
-  const set = (k,v) => { setF(p=>({...p,[k]:v})); setFormErr(""); };
+  const [ef, setEf] = useState({}); // edit form fields
+  const set  = (k,v) => { setF(p=>({...p,[k]:v}));  setFormErr(""); };
+  const eset = (k,v) => { setEf(p=>({...p,[k]:v})); setEditErr(""); };
   const isAdmin = currentUser?.role === "admin";
 
+  // Use ALL users as team (not just lawyers) so admins show too
+  const allMembers = (users||[]).filter(u => u.active);
+  const advocates  = allMembers.filter(u => u.role==="lawyer");
+  const paralegals = allMembers.filter(u => u.role==="paralegal");
+  const admins     = allMembers.filter(u => u.role==="admin");
+  const lawyers_rate = allMembers.filter(u=>u.rate>0);
+  const avgRate = lawyers_rate.length ? Math.round(lawyers_rate.reduce((a,u)=>a+u.rate,0)/lawyers_rate.length) : 0;
+
   const addMember = () => {
-    if (!f.name.trim() || !f.username.trim() || !f.password) return setFormErr("Name, username and password are required.");
+    if (!f.name.trim()||!f.username.trim()||!f.password) return setFormErr("Name, username and password are required.");
     if (f.password.length < 6) return setFormErr("Password must be at least 6 characters.");
-    if ((users||[]).find(u => u.username === f.username.toLowerCase())) return setFormErr("Username already exists.");
+    if ((users||[]).find(u => u.username===f.username.toLowerCase())) return setFormErr("Username already taken.");
     const init = f.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     const av   = AV_COLORS[(users||[]).length % AV_COLORS.length];
     const newUser = { id:Date.now(), name:f.name.trim(), username:f.username.trim().toLowerCase(),
@@ -2266,33 +2278,105 @@ function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
     toast(`${newUser.name} added to the team.`, "success");
   };
 
+  const openEdit = (m) => {
+    setEf({ name:m.name, role:m.role, lsk:m.lsk||"", spec:m.spec||"General Practice", rate:m.rate||"", active:m.active });
+    setEditMem(m); setEditErr("");
+  };
+
+  const saveEdit = () => {
+    if (!ef.name.trim()) return setEditErr("Name is required.");
+    const updated = (users||[]).map(u => u.id===editMem.id ? {
+      ...u, name:ef.name.trim(), role:ef.role,
+      lsk:ef.lsk||undefined, spec:ef.spec||"General Practice",
+      rate:parseInt(ef.rate)||0, active:ef.active,
+      init:ef.name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+    } : u);
+    saveUsers(updated); setUsers(updated);
+    setEditMem(null); setEditErr("");
+    toast(`${ef.name.trim()} updated.`, "success");
+  };
+
+  const toggleActive = (id) => {
+    const updated = (users||[]).map(u => u.id===id ? {...u,active:!u.active} : u);
+    saveUsers(updated); setUsers(updated);
+    const u = updated.find(x=>x.id===id);
+    toast(`${u.name} ${u.active?"activated":"deactivated"}.`, "info");
+  };
+
   const removeMember = (id) => {
-    if (!window.confirm("Remove this team member?")) return;
-    const updated = (users||[]).filter(u => u.id !== id);
+    if (id===currentUser?.id) return toast("Cannot remove yourself.","warn");
+    if (!window.confirm("Remove this team member? They will no longer be able to log in.")) return;
+    const updated = (users||[]).filter(u => u.id!==id);
     saveUsers(updated); setUsers(updated);
     toast("Team member removed.", "info");
   };
 
-  const avgRate = team.filter(t=>t.rate>0).length
-    ? Math.round(team.filter(t=>t.rate>0).reduce((a,t)=>a+t.rate,0)/team.filter(t=>t.rate>0).length) : 0;
+  const MemberCard = ({ m }) => {
+    const active = cases.filter(c=>c.advocate===m.name&&c.status==="Active").length;
+    const hrs    = timeEntries.filter(t=>t.advocate===m.name).reduce((a,t)=>a+t.hrs,0);
+    return (
+      <div className="card" style={{opacity:m.active?1:0.55,transition:"opacity .2s"}}>
+        <div style={{padding:"16px 14px 12px",textAlign:"center",borderBottom:"1px solid var(--border)",position:"relative"}}>
+          {/* Edit button */}
+          {isAdmin && (
+            <button onClick={()=>openEdit(m)}
+              style={{position:"absolute",top:8,left:8,background:"var(--gold3)",border:"1px solid rgba(201,168,76,.3)",color:"var(--gold)",cursor:"pointer",fontSize:10,padding:"2px 7px",borderRadius:"var(--r4)",fontFamily:"'Outfit',sans-serif"}}
+              title="Edit member">✏ Edit</button>
+          )}
+          {/* Remove button */}
+          {isAdmin && m.id!==currentUser?.id && (
+            <button onClick={()=>removeMember(m.id)}
+              style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:16,padding:2,lineHeight:1}}
+              title="Remove">✕</button>
+          )}
+          <div className={`av ${m.av}`} style={{width:52,height:52,fontSize:18,margin:"8px auto 10px",cursor:"pointer"}} onClick={()=>openEdit(m)}>{m.init}</div>
+          <div className="light" style={{fontSize:13.5,fontWeight:600,cursor:"pointer"}} onClick={()=>openEdit(m)}>{m.name}</div>
+          <div className="muted" style={{fontSize:11,marginTop:2}}>{ROLE_LABELS[m.role]||m.role}</div>
+          <div style={{fontSize:11,color:"var(--teal)",marginTop:3}}>{m.spec||"General Practice"}</div>
+          {m.lsk&&m.lsk!=="—"&&<span className="lsk-badge mt8">{m.lsk}</span>}
+          {!m.active&&<div className="badge b-gray" style={{marginTop:6,display:"inline-flex"}}>Inactive</div>}
+        </div>
+        <div style={{padding:"10px 14px"}}>
+          {[["Rate",m.rate>0?`KES ${m.rate.toLocaleString()}/hr`:"—"],["Active Cases",active],["Hours Logged",hrs.toFixed(1)+"h"]].map(([l,v])=>(
+            <div key={l} className="flex fac fjb" style={{marginBottom:7}}>
+              <span className="muted" style={{fontSize:11}}>{l}</span>
+              <span className="light" style={{fontSize:12.5,fontFamily:"'Cormorant Garamond',serif"}}>{v}</span>
+            </div>
+          ))}
+        </div>
+        {isAdmin && (
+          <div style={{padding:"8px 14px",borderTop:"1px solid var(--border)",display:"flex",gap:6}}>
+            <button className="btn btn-ghost btn-xs" style={{flex:1}} onClick={()=>openEdit(m)}>✏ Edit</button>
+            <button className="btn btn-ghost btn-xs" style={{flex:1,color:m.active?"var(--amber)":"var(--green)"}} onClick={()=>toggleActive(m.id)}>
+              {m.active?"⊘ Deactivate":"✓ Activate"}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
+      {/* Header */}
       <div className="flex fac fjb mb16">
         <div>
           <div className="section-hd" style={{marginBottom:2}}>Advocates & Staff</div>
-          <div className="muted" style={{fontSize:11}}>{team.length} registered · {team.filter(m=>m.role==="lawyer"||m.role==="paralegal").length} legal staff</div>
+          <div className="muted" style={{fontSize:11}}>
+            {allMembers.length} registered · {advocates.length} advocates · {paralegals.length} paralegals
+          </div>
         </div>
         {isAdmin && (
           <button className="btn btn-gold btn-sm" onClick={()=>{setShowAdd(s=>!s);setFormErr("");}}>
-            {showAdd ? "✕ Cancel" : "+ Add Member"}
+            {showAdd?"✕ Cancel":"+ Add Member"}
           </button>
         )}
       </div>
 
+      {/* Add Member Form */}
       {showAdd && isAdmin && (
         <div className="card mb16">
-          <div className="card-hd"><span className="card-title">Add Team Member</span></div>
+          <div className="card-hd"><span className="card-title">Add New Team Member</span><span className="muted" style={{fontSize:11}}>They will receive login credentials</span></div>
           <div className="card-body">
             {formErr && <div className="auth-error mb12">⚠ {formErr}</div>}
             <div className="form-row">
@@ -2300,7 +2384,7 @@ function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
               <div className="form-group"><label>Username *</label><input placeholder="e.g. jane.otieno" value={f.username} onChange={e=>set("username",e.target.value)} /></div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label>Password * (min 6)</label><input type="password" placeholder="Temporary password" value={f.password} onChange={e=>set("password",e.target.value)} /></div>
+              <div className="form-group"><label>Password * (min 6 chars)</label><input type="password" placeholder="Temporary login password" value={f.password} onChange={e=>set("password",e.target.value)} /></div>
               <div className="form-group">
                 <label>Role *</label>
                 <select value={f.role} onChange={e=>set("role",e.target.value)}>
@@ -2319,77 +2403,134 @@ function TeamView({ team, cases, timeEntries, users, setUsers, currentUser }) {
               </div>
               <div className="form-group"><label>Hourly Rate (KES)</label><input type="number" placeholder="e.g. 15000" value={f.rate} onChange={e=>set("rate",e.target.value)} /></div>
             </div>
-            {f.role==="lawyer" && (
+            {f.role==="lawyer"&&(
               <div className="form-group" style={{maxWidth:280}}><label>LSK Number</label><input placeholder="LSK/YYYY/XXXX" value={f.lsk} onChange={e=>set("lsk",e.target.value)} /></div>
             )}
             <div className="flex gap8" style={{justifyContent:"flex-end"}}>
               <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setFormErr("");}}>Cancel</button>
-              <button className="btn btn-gold" onClick={addMember}>Add to Team</button>
+              <button className="btn btn-gold" onClick={addMember}>Add to Team →</button>
             </div>
           </div>
         </div>
       )}
 
-      {!team.length && !showAdd && (
+      {/* Empty state */}
+      {!allMembers.length && !showAdd && (
         <div style={{textAlign:"center",padding:"40px 20px",color:"var(--muted)",background:"var(--card)",borderRadius:"var(--r10)",border:"1px solid var(--border)"}}>
           <div style={{fontSize:40,marginBottom:12}}>◎</div>
           <div style={{fontSize:14,marginBottom:6}}>No team members yet</div>
-          <div style={{fontSize:12}}>{isAdmin ? "Click + Add Member above to get started." : "No team members have been added yet."}</div>
+          <div style={{fontSize:12}}>{isAdmin?"Click + Add Member to get started.":"Contact your administrator."}</div>
         </div>
       )}
 
-      {team.length > 0 && (
-        <>
-          <div className="stats-row cols-3">
-            <StatCard icon="◎" color="c-gold" label="Total Staff" val={team.length} sub={`${team.filter(m=>m.role==="lawyer").length} advocates · ${team.filter(m=>m.role==="paralegal").length} paralegals`} />
-            <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={avgRate>0?"KES "+avgRate.toLocaleString():"—"} sub="Per hour" />
-            <StatCard icon="⏱" color="c-blue" label="Billable Hours" val={timeEntries.reduce((a,t)=>a+t.hrs,0).toFixed(1)+"h"} sub="All time" />
-          </div>
+      {/* Stats */}
+      {allMembers.length > 0 && (
+        <div className="stats-row cols-3" style={{marginBottom:20}}>
+          <StatCard icon="◎" color="c-gold" label="Total Staff" val={allMembers.length} sub={`${advocates.length} advocates · ${paralegals.length} paralegals`} />
+          <StatCard icon="KES" color="c-green" label="Avg Hourly Rate" val={avgRate>0?"KES "+avgRate.toLocaleString():"—"} sub="Across all fee earners" />
+          <StatCard icon="⏱" color="c-blue" label="Hours Logged" val={timeEntries.reduce((a,t)=>a+t.hrs,0).toFixed(1)+"h"} sub="All time" />
+        </div>
+      )}
 
-          {["lawyer","paralegal","admin"].map(role => {
-            const group = team.filter(m => m.role===role);
-            if (!group.length) return null;
-            const label = role==="lawyer"?"Advocates":role==="paralegal"?"Paralegals":"Administrators";
-            return (
-              <div key={role} className="mb16">
-                <div className="flex fac gap8 mb10">
-                  <span className={`badge ${ROLE_COLORS[role]||"b-gray"}`}>{label}</span>
-                  <span className="muted" style={{fontSize:11}}>{group.length} member{group.length!==1?"s":""}</span>
-                </div>
-                <div className="grid-team">
-                  {group.map(m => {
-                    const active = cases.filter(c => c.advocate===m.name && c.status==="Active").length;
-                    const hrs    = timeEntries.filter(t => t.advocate===m.name).reduce((a,t)=>a+t.hrs,0);
-                    return (
-                      <div key={m.id} className="card">
-                        <div style={{padding:"16px 14px 12px",textAlign:"center",borderBottom:"1px solid var(--border)",position:"relative"}}>
-                          {isAdmin && m.id !== currentUser?.id && (
-                            <button onClick={()=>removeMember(m.id)}
-                              style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:14,padding:2}}
-                              title="Remove">✕</button>
-                          )}
-                          <div className={`av ${m.av}`} style={{width:46,height:46,fontSize:16,margin:"0 auto 10px"}}>{m.init}</div>
-                          <div className="light" style={{fontSize:13.5,fontWeight:600}}>{m.name}</div>
-                          <div className="muted" style={{fontSize:11,marginTop:2}}>{ROLE_LABELS[m.role]||m.role}</div>
-                          <div style={{fontSize:11,color:"var(--teal)",marginTop:3}}>{m.spec||"General Practice"}</div>
-                          {m.lsk&&m.lsk!=="—"&&<span className="lsk-badge mt8">{m.lsk}</span>}
-                        </div>
-                        <div style={{padding:"10px 14px"}}>
-                          {[["Rate",m.rate>0?`KES ${m.rate.toLocaleString()}/hr`:"—"],["Active Cases",active],["Hours Logged",hrs.toFixed(1)+"h"]].map(([l,v])=>(
-                            <div key={l} className="flex fac fjb" style={{marginBottom:7}}>
-                              <span className="muted" style={{fontSize:11}}>{l}</span>
-                              <span className="light" style={{fontSize:12.5,fontFamily:"'Cormorant Garamond',serif"}}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+      {/* Advocates */}
+      {advocates.length > 0 && (
+        <div className="mb20">
+          <div className="flex fac gap8 mb12"><span className="badge b-blue">Advocates</span><span className="muted" style={{fontSize:11}}>{advocates.length} member{advocates.length!==1?"s":""}</span></div>
+          <div className="grid-team">{advocates.map(m=><MemberCard key={m.id} m={m}/>)}</div>
+        </div>
+      )}
+
+      {/* Paralegals */}
+      {paralegals.length > 0 && (
+        <div className="mb20">
+          <div className="flex fac gap8 mb12"><span className="badge b-teal">Paralegals</span><span className="muted" style={{fontSize:11}}>{paralegals.length} member{paralegals.length!==1?"s":""}</span></div>
+          <div className="grid-team">{paralegals.map(m=><MemberCard key={m.id} m={m}/>)}</div>
+        </div>
+      )}
+
+      {/* Administrators */}
+      {admins.length > 0 && (
+        <div className="mb20">
+          <div className="flex fac gap8 mb12"><span className="badge b-gold">Administrators</span><span className="muted" style={{fontSize:11}}>{admins.length} member{admins.length!==1?"s":""}</span></div>
+          <div className="grid-team">{admins.map(m=><MemberCard key={m.id} m={m}/>)}</div>
+        </div>
+      )}
+
+      {/* ── EDIT MEMBER MODAL ── */}
+      {editMem && (
+        <div className="overlay" onClick={()=>setEditMem(null)}>
+          <div className="modal" style={{width:520}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-hd">
+              <div>
+                <div className="modal-title">Edit — {editMem.name}</div>
+                <div className="modal-sub">Update profile, role, and billing details</div>
+              </div>
+              <button className="close-x" onClick={()=>setEditMem(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {editErr && <div className="auth-error mb12">⚠ {editErr}</div>}
+
+              {/* Avatar display */}
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20,padding:"12px 14px",background:"var(--card)",borderRadius:"var(--r8)",border:"1px solid var(--border)"}}>
+                <div className={`av ${editMem.av}`} style={{width:48,height:48,fontSize:18}}>{editMem.init}</div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:"var(--light)"}}>{editMem.name}</div>
+                  <div style={{fontSize:11,color:"var(--muted)"}}>@{editMem.username}</div>
+                  <span className={`badge ${ROLE_COLORS[editMem.role]||"b-gray"}`} style={{marginTop:4,display:"inline-flex",fontSize:9}}>{ROLE_LABELS[editMem.role]||editMem.role}</span>
                 </div>
               </div>
-            );
-          })}
-        </>
+
+              <div className="form-row">
+                <div className="form-group"><label>Full Name *</label><input value={ef.name||""} onChange={e=>eset("name",e.target.value)} placeholder="Full name" /></div>
+                <div className="form-group">
+                  <label>Role</label>
+                  <select value={ef.role||"lawyer"} onChange={e=>eset("role",e.target.value)}>
+                    <option value="lawyer">Advocate / Lawyer</option>
+                    <option value="paralegal">Paralegal</option>
+                    <option value="admin">Administrator</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Specialization</label>
+                  <select value={ef.spec||"General Practice"} onChange={e=>eset("spec",e.target.value)}>
+                    {LEGAL_SPECIALIZATIONS.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label>Hourly Rate (KES)</label><input type="number" placeholder="e.g. 15000" value={ef.rate||""} onChange={e=>eset("rate",e.target.value)} /></div>
+              </div>
+              {(ef.role==="lawyer"||editMem.role==="lawyer") && (
+                <div className="form-group" style={{maxWidth:280}}><label>LSK Number</label><input placeholder="LSK/YYYY/XXXX" value={ef.lsk||""} onChange={e=>eset("lsk",e.target.value)} /></div>
+              )}
+
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderTop:"1px solid var(--border)",marginTop:8}}>
+                <div className="flex fac gap10">
+                  <span style={{fontSize:12,color:"var(--text)"}}>Account Status</span>
+                  <span className={`badge ${ef.active?"b-green":"b-gray"}`}>{ef.active?"Active":"Inactive"}</span>
+                </div>
+                {editMem.id!==currentUser?.id && (
+                  <button className="btn btn-ghost btn-sm" style={{color:ef.active?"var(--amber)":"var(--green)"}}
+                    onClick={()=>eset("active",!ef.active)}>
+                    {ef.active?"⊘ Set Inactive":"✓ Set Active"}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap8" style={{justifyContent:"space-between",marginTop:16}}>
+                <div>
+                  {editMem.id!==currentUser?.id && isAdmin && (
+                    <button className="btn btn-red btn-sm" onClick={()=>{setEditMem(null);removeMember(editMem.id);}}>✕ Remove</button>
+                  )}
+                </div>
+                <div className="flex gap8">
+                  <button className="btn btn-ghost" onClick={()=>setEditMem(null)}>Cancel</button>
+                  <button className="btn btn-gold" onClick={saveEdit}>Save Changes</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
